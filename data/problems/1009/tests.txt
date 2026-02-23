@@ -1,0 +1,18 @@
+Displays a rectangle by outputting lowercase letters, starting with a,
+in a "snakelike" manner, from left to right, then from right to left,
+then from left to right, then from right to left, wrapping around when z is reached.
+
+>>> rectangle(1, 1)
+a
+>>> rectangle(2, 3)
+ab
+dc
+ef
+>>> rectangle(3, 2)
+abc
+fed
+>>> rectangle(17, 4)
+abcdefghijklmnopq
+hgfedcbazyxwvutsr
+ijklmnopqrstuvwxy
+ponmlkjihgfedcbaz

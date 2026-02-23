@@ -28,16 +28,34 @@
 * **常规业务流:** 标准 HTTP RESTful API (JSON Payload)。
 * **异步评测反馈:** Server-Sent Events (SSE) 单向长连接推送。
 
-## 3. 核心业务流转 (Core Workflow)
+## 3. 核心业务生命周期 (Core Workflow & Lifecycle)
 
-1. **鉴权 (Authentication):** 用户在插件端输入邮箱 -> Server 校验白名单并发送 OTP -> 用户提交 OTP -> Server 签发 JWT。
-2. **初始化 (Provisioning):** 插件携带 JWT 请求 `/problems` 接口渲染侧边栏；用户点击节点，请求 `/problems/{id}` 获取 Markdown 描述与初始代码，并写入本地 `.py` 文件。
-3. **提交与评测 (Submission & Execution):** * 插件 POST 代码至 `/submissions`。
-* Server 生成 `submission_id` 并将任务压入 Channel 队列。
-* Judge Worker 取出任务，通过 Docker SDK 拉起隔离容器，挂载 I/O 用例进行黑盒测试。
+### 3.1 鉴权与会话建立 (AuthN & AuthZ)
+* **Trigger (触发):** 客户端（VS Code 插件）发起登录请求，提交用户邮箱。
+* **Validation (校验):** Server 侧网关拦截请求，查阅本地白名单表（Whitelist）。未命中则直接返回 `403 Forbidden`。
+* **OTP Generation (凭证生成):** 命中白名单后，Server 生成带 TTL（如 5 分钟）的随机 6 位验证码，存入内存缓存，并通过 SMTP (或控制台) 下发至目标邮箱。
+* **Token Issuance (会话签发):** 客户端提交验证码，Server 校验一致后，签发 JWT (JSON Web Token)。此后客户端所有后续请求均需在 Header 中携带 `Authorization: Bearer <JWT>`。
 
+### 3.2 元数据同步与按需加载 (Metadata Sync & Lazy Loading)
+* **Index Fetch (拉取索引):** 客户端携带 JWT 请求`/problems` 接口。Server 返回包含该用户评测状态的 JSON 数组（带 `problem_id`, `title`, `difficulty`, 当前状态等），用于前端渲染 Tree View 和图标。
+* **Detail Fetch (懒加载详情):** 用户点击特定题目，客户端发起详情请求。Server 下发对应的 Markdown 题面描述和 Python 初始化代码片段（Scaffold）。
+* **Local Provision (本地初始化):** 客户端根据下发的数据，在用户本地工作区动态拼装并展示题目描述与代码编辑界面。
 
-4. **状态推送 (Notification):** 容器销毁，Server 比对 stdout 与 `.out` 文件生成 AC/WA/TLE 等状态，通过 SSE 接口向插件推送最终结果。
+### 3.3 本地开发阶段 (Local Development)
+* **Offline Coding (离线编写):** 此阶段为纯客户端行为。用户在本地 VS Code 环境中编写 Python 核心逻辑代码，也可运行本地自带的 Public Test，后端无压力。
+
+### 3.4 提交与沙盒评测 (Submission & Sandbox Execution)
+* **Payload Submission (投递):** 用户触发提交，客户端将 `{ "problem_id": 123, "source_code": "..." }` 封装为 JSON POST 至 Server。
+* **Job Queuing (任务入队):** Server 接收并落库（状态记为 `PENDING`），将评测任务压入内部缓冲队列（Go Channel），并立即向客户端返回 `submission_id`。
+* **Sandbox Provision (环境初始化):** Judge Worker 取出任务，调用 Docker API 启动极轻量运行时容器 `alpine-python3`。
+* **Resource Limits & Isolation (安全硬化):** 严格配置 `cgroups`（内存及 CPU Quota限制），移除容器网络（`NetworkDisabled: true`）防止反弹 Shell，并丢弃特权权限。
+* **Execution & I/O (动态注入与执行):** 将服务端持有的隐藏测试用例脚本注入到用户代码中，通过 `doctest` 静默运行验证。捕获进程 `stdout/stderr`，并实施时间截断熔断。
+* **Teardown (环境销毁):** 进程结束或超时，立即强制回收容器。
+
+### 3.5 判题与结果反馈 (Evaluation & Notification)
+* **Evaluation (判题分析):** Judge 服务收集退出码及执行结果，更新 Submission 库的最终状态（`AC`, `WA`, `TLE`, `RE` 等）。
+* **Data Masking (数据脱敏):** 组装处理结果时严格执行脱敏：如果是 `WA` 或 `RE`，绝对不包含触发崩溃的具体隐藏用例的输入数据，直接斩断学生企图暴力枚举或特判打表的可能性。
+* **Client Render (前端推流渲染):** 根据长连接拉取或 SSE (Server-Sent Events) 单向推送机制，将最终结果动态反馈给客户端，VS Code 进行答题卡状态的渲染更新。
 
 ---
 
@@ -72,8 +90,9 @@
 
 ### Phase 4: REST API 与 SSE 通信层 (Transport Layer)
 
-* [ ] **4.1 题目分发接口:** 实现带鉴权的 `GET /problems` 和 `GET /problems/{id}` 接口。**服务端除了返回题目描述，需要附加下发基于 Python 语言的初始化代码脚手架 (Code Scaffolding/Function Signature)。**
+* [ ] **4.1 题目分发接口:** 实现带鉴权的 `GET /problems` 和 `GET /problems/{id}` 接口。**重点：除了返回题目描述和下发 Python 代码脚手架 (Scaffolding)，还需要在列表中附带该用户对每道题的评测状态 (例如 AC 通过 / WA 未通过 / 未尝试)，供前端渲染完成度。**
 * [ ] **4.2 提交接收接口:** 实现 `POST /submissions` 接口，完成请求 Payload 解析并推入评测队列。
+* [ ] **4.3 历史记录接口:** 实现 `GET /submissions` 接口，允许获取当前用户的历史提交记录列表（含代码片段与每次评测的详细状态结果）。
 * [ ] **4.3 SSE 推送接口:** 实现 `GET /submissions/{id}/stream`，接管 `http.Flusher`，将评测结果异步推流至客户端。
 * [ ] **4.4 消息队列容灾恢复:** 增加服务初始化的崩溃恢复逻辑 (Crash Recovery)——系统启动时读取 SQLite，重新拉起由于意外断电导致的、状态驻留在 `PENDING/RUNNING` 的孤儿判题。
 
@@ -81,7 +100,7 @@
 
 * [ ] **5.1 工程搭建与安全凭据:** 搭建 TypeScript 框架，实现交互。**切记使用 VS Code 核心的 `context.secrets.store()` 进行 JWT Token 的安全保管与读取**。
 * [ ] **5.2 HTTP 客户端与主动轮询降级:** 封装带自动注入 JWT header 的 Axios 请求；开发 SSE 的 Fallback 机制——若等待状态超限，提供长轮询或主动 API 请求拉取最终成绩防假死。
-* [ ] **5.3 智能文件呈现:** 监听树节点点击事件，通过 VS Code API 读取云端 Markdown 和题目初始代码脚手架模板，在本地动态组合并以无缝的体验唤起 `.py` 编辑画面。
+* [ ] **5.3 智能文件呈现与答题卡展示:** 根据后端返回的题目状态，在 VS Code 侧边栏的 Tree View 中为每道题挂载不同的状态图标 (例如 ✅ 已通过、❌ 报错、⚪ 未尝试)。同时点击节点后，动态拉取并拼接 Markdown 题面与代码模板。
 * [ ] **5.4 提交与推流订阅:** 绑定 `Submit` 快捷键，打包代码发起 POST 请求，并建立 EventSource 监听 SSE 结果渲染到右下角通知或输出面板。
 
 ### Phase 6: 系统联调与测试验证 (E2E & Hardening)

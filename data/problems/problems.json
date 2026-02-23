@@ -1,0 +1,101 @@
+[
+    {
+        "id": 1001,
+        "title": "字典与集合01",
+        "difficulty": "Easy",
+        "tags": [
+            "Auto-generated"
+        ],
+        "time_limit_ms": 1000,
+        "memory_limit_kb": 65536,
+        "case_count": 7
+    },
+    {
+        "id": 1002,
+        "title": "字典与集合02",
+        "difficulty": "Easy",
+        "tags": [
+            "Auto-generated"
+        ],
+        "time_limit_ms": 1000,
+        "memory_limit_kb": 65536,
+        "case_count": 3
+    },
+    {
+        "id": 1003,
+        "title": "字典与集合03",
+        "difficulty": "Easy",
+        "tags": [
+            "Auto-generated"
+        ],
+        "time_limit_ms": 1000,
+        "memory_limit_kb": 65536,
+        "case_count": 4
+    },
+    {
+        "id": 1004,
+        "title": "字符串01",
+        "difficulty": "Easy",
+        "tags": [
+            "Auto-generated"
+        ],
+        "time_limit_ms": 1000,
+        "memory_limit_kb": 65536,
+        "case_count": 7
+    },
+    {
+        "id": 1005,
+        "title": "字符串02",
+        "difficulty": "Easy",
+        "tags": [
+            "Auto-generated"
+        ],
+        "time_limit_ms": 1000,
+        "memory_limit_kb": 65536,
+        "case_count": 5
+    },
+    {
+        "id": 1006,
+        "title": "打印输出01",
+        "difficulty": "Easy",
+        "tags": [
+            "Auto-generated"
+        ],
+        "time_limit_ms": 1000,
+        "memory_limit_kb": 65536,
+        "case_count": 7
+    },
+    {
+        "id": 1007,
+        "title": "打印输出02",
+        "difficulty": "Easy",
+        "tags": [
+            "Auto-generated"
+        ],
+        "time_limit_ms": 1000,
+        "memory_limit_kb": 65536,
+        "case_count": 7
+    },
+    {
+        "id": 1008,
+        "title": "打印输出03",
+        "difficulty": "Easy",
+        "tags": [
+            "Auto-generated"
+        ],
+        "time_limit_ms": 1000,
+        "memory_limit_kb": 65536,
+        "case_count": 5
+    },
+    {
+        "id": 1009,
+        "title": "打印输出04",
+        "difficulty": "Easy",
+        "tags": [
+            "Auto-generated"
+        ],
+        "time_limit_ms": 1000,
+        "memory_limit_kb": 65536,
+        "case_count": 4
+    }
+]
