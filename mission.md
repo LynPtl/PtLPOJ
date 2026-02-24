@@ -84,7 +84,7 @@
 
 ### Phase 3: 鉴权模块与安全性加固 (Auth & Security)
 
-* [ ] **3.1 邮件服务集成:** 封装 SMTP 或云端邮件 API（如 AWS SES），实现 OTP 验证码的生成与下发机制（含 5 分钟 TTL 缓存逻辑）。
+* [ ] **3.1 邮件服务集成:** 封装 SMTP 伪装适配层（当前开发阶段仅在服务端 Console 打印 OTP）。**关键代办**：未来需要对接真实的 SMTP 服务器 (如 AWS SES, 腾讯云邮件) 完成真正的邮件下发，防止遗忘。
 * [ ] **3.2 JWT 签发与鉴权:** 完成 `/login` 和 `/verify` 接口。
 * [ ] **3.3 中间件开发:** 编写 Go Middleware，实现 JWT Header 拦截与基础的 Token Bucket 限流策略。
 
