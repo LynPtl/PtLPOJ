@@ -98,10 +98,10 @@
 
 ### Phase 5: VS Code 插件开发 (Client Application)
 
-* [ ] **5.1 工程搭建与安全凭据:** 搭建 TypeScript 框架，实现交互。**切记使用 VS Code 核心的 `context.secrets.store()` 进行 JWT Token 的安全保管与读取**。
-* [ ] **5.2 HTTP 客户端与主动轮询降级:** 封装带自动注入 JWT header 的 Axios 请求；开发 SSE 的 Fallback 机制——若等待状态超限，提供长轮询或主动 API 请求拉取最终成绩防假死。
-* [ ] **5.3 智能文件呈现与答题卡展示:** 根据后端返回的题目状态，在 VS Code 侧边栏的 Tree View 中为每道题挂载不同的状态图标 (例如 ✅ 已通过、❌ 报错、⚪ 未尝试)。同时点击节点后，动态拉取并拼接 Markdown 题面与代码模板。
-* [ ] **5.4 提交与推流订阅:** 绑定 `Submit` 快捷键，打包代码发起 POST 请求，并建立 EventSource 监听 SSE 结果渲染到右下角通知或输出面板。
+* [x] **5.1 工程搭建与安全凭据:** 搭建 TypeScript 框架，实现交互。**切记使用 VS Code 核心的 `context.secrets.store()` 进行 JWT Token 的安全保管与读取**。
+* [x] **5.2 HTTP 客户端与主动轮询降级:** 封装带自动注入 JWT header 的 Axios 请求；开发 SSE 的 Fallback 机制——若等待状态超限，提供长轮询或主动 API 请求拉取最终成绩防假死。
+* [x] **5.3 智能文件呈现与答题卡展示:** 根据后端返回的题目状态，在 VS Code 侧边栏的 Tree View 中为每道题挂载不同的状态图标 (例如 ✅ 已通过、❌ 报错、⚪ 未尝试)。同时点击节点后，动态拉取并拼接 Markdown 题面与代码模板。
+* [x] **5.4 提交与推流订阅:** 绑定 `Submit` 快捷键，打包代码发起 POST 请求，并建立 EventSource 监听 SSE 结果渲染到右下角通知或输出面板。
 
 ### Phase 6: 系统联调与测试验证 (E2E & Hardening)
 
