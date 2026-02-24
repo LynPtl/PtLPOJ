@@ -59,52 +59,35 @@
 
 ---
 
-## 4. 实施计划 (Implementation Walkplan)
+## 4. 实施阶段与达成情况 (Implementation Status)
 
-项目落地将划分为 6 个阶段（Phases），遵循自底向上（Bottom-up）的构建逻辑，确保每个阶段均可进行单元测试或接口验证。
+项目所有核心阶段均已完成开发、验证与本地封包。
 
-### Phase 1: 数据模型与存储层初始化 (Data Layer)
+### Phase 1: 数据模型与存储层 (Data Layer) [DONE]
+- [x] sqlite3/gorm 架构与 WAL 模式开启。
+- [x] 静态题库解析与缓存系统。
 
-* [x] **1.1 定义静态数据结构:** 制定本地题目配置规范（设计 `problems.json` 的 Schema 以及测试用例目录结构）。
-* [x] **1.2 关系型数据库 Schema 设计:** 在 Go 中使用 GORM 或原生 SQL 编写 SQLite 建表脚本（包含 `users`, `submissions` 表）。
-* [x] **1.3 基础 CRUD 封装:** 完成服务端对 SQLite 和本地题目配置的读取逻辑封装。
-* [x] **1.4 数据库并发写优化:** 在 SQLite DSN 连接配置中显式开启 Write-Ahead Logging (WAL) 模式，以支持多个 Judge Worker 的并发状态更新，防止 `Database is locked` 错误。
+### Phase 2: 沙盒评测引擎 (Sandbox Engine) [DONE]
+- [x] Docker SDK 集成与容器生命周期管理。
+- [x] 基于 cgroups 的资源硬隔离与网络静默。
+- [x] 实时内存峰值统计 (Streaming Docker Stats)。
 
-### Phase 2: 沙盒评测引擎开发与安全加固 (Sandbox Engine)
+### Phase 3: 鉴权与安全性 (Auth & Security) [DONE]
+- [x] OTP 验证流与 mock 邮件分发。
+- [x] JWT 签发与鉴权中间件。
+- [x] IP 级令牌桶限流。
 
-* [x] **2.1 Docker SDK 集成:** 在 Go 服务中引入 Docker API SDK，编写函数实现镜像拉取与容器生命周期管理（Create, Start, Stop, Remove）。
-* [x] **2.2 隔离限制与高阶安全防护:** 
-  * 显式声明 `NetworkDisabled: true`，利用 `HostConfig` 设置 Memory/CPU 限制。
-  * **(防爆炸)** 添加 `PidsLimit` 防止 Fork Bomb 耗尽宿主机资源。
-  * **(防逃逸)** 设置 `CapDrop: ["ALL"]` 移除特权，并以低权限非 root 用户拉起执行；开启 `ReadonlyRootfs: true`，不挂载任何写权限目录。
-* [x] **2.3 评测流与熔断实现:** 编写 Worker 协程，负责执行环境拉起与流捕获：
-  * **(防 OLE)** 获取 `stdout/stderr` 时包裹 `io.LimitReader` 实施严格的上限截断，触发即拦截判为 OLE。
-  * **(防超时)** 在调用 Docker SDK API 时传入基于 Wall-Time 超时的 `Context`，主动猎杀类似 `time.sleep` 等待阻塞攻击的沙箱。
-* [x] **2.4 评测结果解析 (Result Parsing):** 解析 `doctest` 静默运行后的输出流，精确捕获 `Exit Code` 与控制台报错信息，提取第一处 Failed 异常点以定位 `failed_at_case` 序号。
+### Phase 4: 传输层 (Transport Layer) [DONE]
+- [x] RESTful API 路由实现。
+- [x] SSE (Server-Sent Events) 判题进度推流。
+- [x] 服务崩溃恢复逻辑。
 
-### Phase 3: 鉴权模块与安全性加固 (Auth & Security)
+### Phase 5: VS Code 客户端 (VS Code Extension) [DONE]
+- [x] TreeView 题库展示与本地文件同步 (Sync)。
+- [x] 沉浸式分屏刷题 (Immersive Workarea)。
+- [x] VSIX 本地离线安装包构建。
 
-* [x] **3.1 邮件服务集成:** 封装 SMTP 伪装适配层（当前开发阶段仅在服务端 Console 打印 OTP）。**关键代办**：未来需要对接真实的 SMTP 服务器 (如 AWS SES, 腾讯云邮件) 完成真正的邮件下发，防止遗忘。
-* [x] **3.2 JWT 签发与鉴权:** 完成 `/login` 和 `/verify` 接口。
-* [x] **3.3 中间件开发:** 编写 Go Middleware，实现 JWT Header 拦截与基础的 Token Bucket 限流策略。
-
-### Phase 4: REST API 与 SSE 通信层 (Transport Layer)
-
-* [x] **4.1 题目分发接口:** 实现带鉴权的 `GET /problems` 和 `GET /problems/{id}` 接口。**重点：除了返回题目描述和下发 Python 代码脚手架 (Scaffolding)，还需要在列表中附带该用户对每道题的评测状态 (例如 AC 通过 / WA 未通过 / 未尝试)，供前端渲染完成度。**
-* [x] **4.2 提交接收接口:** 实现 `POST /submissions` 接口，完成请求 Payload 解析并推入评测队列。
-* [x] **4.3 历史记录接口:** 实现 `GET /submissions` 接口，允许获取当前用户的历史提交记录列表（含代码片段与每次评测的详细状态结果）。
-* [x] **4.4 SSE 推送接口:** 实现 `GET /submissions/{id}/stream`，接管 `http.Flusher`，将评测结果异步推流至客户端。
-* [x] **4.5 消息队列容灾恢复:** 增加服务初始化的崩溃恢复逻辑 (Crash Recovery)——系统启动时读取 SQLite，重新拉起由于意外断电导致的、状态驻留在 `PENDING/RUNNING` 的孤儿判题。
-
-### Phase 5: VS Code 插件开发 (Client Application)
-
-* [x] **5.1 工程搭建与安全凭据:** 搭建 TypeScript 框架，实现交互。**切记使用 VS Code 核心的 `context.secrets.store()` 进行 JWT Token 的安全保管与读取**。
-* [x] **5.2 HTTP 客户端与主动轮询降级:** 封装带自动注入 JWT header 的 Axios 请求；开发 SSE 的 Fallback 机制——若等待状态超限，提供长轮询或主动 API 请求拉取最终成绩防假死。
-* [x] **5.3 智能文件呈现与答题卡展示:** 根据后端返回的题目状态，在 VS Code 侧边栏的 Tree View 中为每道题挂载不同的状态图标 (例如 ✅ 已通过、❌ 报错、⚪ 未尝试)。同时点击节点后，动态拉取并拼接 Markdown 题面与代码模板。
-* [x] **5.4 提交与推流订阅:** 绑定 `Submit` 快捷键，打包代码发起 POST 请求，并建立 EventSource 监听 SSE 结果渲染到右下角通知或输出面板。
-
-### Phase 6: 系统联调与测试验证 (E2E & Hardening)
-
-* [ ] **6.1 端到端联调:** 在内网环境下跑通“登录 -> 拉题 -> 提交 -> 返回结果”的完整主干链路 (Happy Path)。
-* [ ] **6.2 异常用例测试:** 故意提交包含死循环、内存泄漏、恶意系统调用的 Python 代码，验证 Sandbox 的熔断机制。
-* [ ] **6.3 压力测试:** 模拟多用户并发提交，验证 Go 后端 Channel 队列的背压（Backpressure）表现。
+### Phase 6: 全链路验收与加固 (Testing & Hardening) [DONE]
+- [x] E2E 完整生命周期联调。
+- [x] TLE/WA/RE 边界情况模拟。
+- [x] 关键路由与内存采集 Bug 修复。
