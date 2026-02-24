@@ -49,7 +49,7 @@ graph TD
     RateLimiter ---> AuthMiddleware
     AuthMiddleware ---> Gateway
 
-    VSCode <... | Server-Sent Events | SSE
+    SSE -.-> | Server-Sent Events | VSCode
 
     Gateway ---> | Read/Write | SQLite
     Gateway ---> | Read | FileSystem
