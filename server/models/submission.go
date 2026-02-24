@@ -12,7 +12,7 @@ type SubmissionStatus string
 
 const (
 	StatusPending SubmissionStatus = "PENDING"
-	StatusRunning   SubmissionStatus = "RUNNING"
+	StatusRunning SubmissionStatus = "RUNNING"
 	StatusAC      SubmissionStatus = "AC"  // Accepted
 	StatusWA      SubmissionStatus = "WA"  // Wrong Answer
 	StatusTLE     SubmissionStatus = "TLE" // Time Limit Exceeded

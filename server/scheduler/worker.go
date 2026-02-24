@@ -12,10 +12,26 @@ import (
 // StartWorkerPool initializes and starts a given number of worker goroutines
 // to consume PENDING submissions from the database.
 func StartWorkerPool(workerCount int) {
+	// 0. Crash Recovery Hook
+	recoverOrphanedSubmissions()
+
 	for i := 0; i < workerCount; i++ {
 		go judgeWorker(i)
 	}
 	log.Printf("Started %d Judge Workers", workerCount)
+}
+
+// recoverOrphanedSubmissions reverts any 'RUNNING' submissions back to 'PENDING'.
+// This is critical if the main server process crashed or was killed while workers were executing tasks,
+// ensuring those requests are eventually evaluated.
+func recoverOrphanedSubmissions() {
+	res := storage.DB.Model(&models.Submission{}).
+		Where("status = ?", models.StatusRunning).
+		Update("status", models.StatusPending)
+
+	if res.RowsAffected > 0 {
+		log.Printf("[Crash Recovery] Reverted %d orphaned submissions back to PENDING queue", res.RowsAffected)
+	}
 }
 
 func judgeWorker(workerID int) {

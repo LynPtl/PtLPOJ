@@ -16,7 +16,7 @@ var (
 	ProblemCache map[int]models.Problem
 	// DataDirPath holds the absolute path to the data directory
 	DataDirPath string
-	
+
 	cacheMutex sync.RWMutex
 )
 
@@ -72,9 +72,9 @@ func GetProblemByID(id int) (*models.Problem, error) {
 func GetProblemFile(id int, filename string) (string, error) {
 	// Security: prevent directory traversal
 	cleanFilename := filepath.Base(filename)
-	
+
 	filePath := filepath.Join(DataDirPath, "problems", fmt.Sprintf("%d", id), cleanFilename)
-	
+
 	bytes, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -82,7 +82,7 @@ func GetProblemFile(id int, filename string) (string, error) {
 		}
 		return "", err
 	}
-	
+
 	return string(bytes), nil
 }
 

@@ -25,15 +25,61 @@ func SetupRouter() *http.ServeMux {
 	// 3. Protected Endpoints (Requires JWT)
 	protectedMux := http.NewServeMux()
 
-	// Example stub route (to be fleshed out in Phase 4)
+	// Phase 4 Routes -> Problems API
 	protectedMux.HandleFunc("/api/problems", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"status": "protected route reached"}`))
+		// Extremely simple router without 3rd party frameworks like Gin or standard Go 1.22 methods
+		if r.URL.Path == "/api/problems" || r.URL.Path == "/api/problems/" {
+			handlers.GetProblemsHandler(w, r)
+			return
+		}
+		// Otherwise it's /api/problems/123
+		handlers.GetProblemDetailHandler(w, r)
+	})
+
+	// Phase 4 Routes -> Submissions API
+	protectedMux.HandleFunc("/api/submissions", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/submissions" || r.URL.Path == "/api/submissions/" {
+			if r.Method == http.MethodGet {
+				handlers.GetUserSubmissionsHandler(w, r)
+			} else if r.Method == http.MethodPost {
+				handlers.CreateSubmissionHandler(w, r)
+			} else {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+	})
+
+	// SSE stream specifically mounts over submissions prefix
+	protectedMux.HandleFunc("/api/submissions/", func(w http.ResponseWriter, r *http.Request) {
+		// Need to differentiate between exact root and child paths
+		if r.URL.Path == "/api/submissions" || r.URL.Path == "/api/submissions/" {
+			// Defer to above logic
+			if r.Method == http.MethodGet {
+				handlers.GetUserSubmissionsHandler(w, r)
+			} else if r.Method == http.MethodPost {
+				handlers.CreateSubmissionHandler(w, r)
+			} else {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+
+		// Otherwise check if it ends with /stream
+		if len(r.URL.Path) > 7 && r.URL.Path[len(r.URL.Path)-7:] == "/stream" {
+			handlers.SSEStreamHandler(w, r)
+			return
+		}
+
+		http.Error(w, "Endpoint Not Found", http.StatusNotFound)
 	})
 
 	// Mount the protected sub-router under /api/ with RequireAuth middleware
-	// Since ServeMux doesn't support sub-routing easily before Go 1.22 perfectly,
-	// we will apply it directly.
+	// We map the root prefixes explicitly because Go's default Mux matches trailing slashes to children
 	mux.Handle("/api/problems", middleware.RequireAuth(protectedMux))
+	mux.Handle("/api/problems/", middleware.RequireAuth(protectedMux))
+	mux.Handle("/api/submissions", middleware.RequireAuth(protectedMux))
+	mux.Handle("/api/submissions/", middleware.RequireAuth(protectedMux))
 
 	log.Println("API Router configured successfully")
 	return mux

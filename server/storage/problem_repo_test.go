@@ -9,14 +9,14 @@ import (
 func TestProblemRepo(t *testing.T) {
 	// Let's test against the real generated data structure in PtLPOJ/data
 	// Assuming the test runs from within PtLPOJ/server/storage
-	
+
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Failed to get working directory: %v", err)
 	}
-	
+
 	dataDir := filepath.Join(filepath.Dir(wd), "..", "data")
-	
+
 	err = InitProblemRepo(dataDir)
 	if err != nil {
 		// If problems.json is missing, skip the test safely instead of crashing

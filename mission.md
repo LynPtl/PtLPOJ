@@ -90,11 +90,11 @@
 
 ### Phase 4: REST API 与 SSE 通信层 (Transport Layer)
 
-* [ ] **4.1 题目分发接口:** 实现带鉴权的 `GET /problems` 和 `GET /problems/{id}` 接口。**重点：除了返回题目描述和下发 Python 代码脚手架 (Scaffolding)，还需要在列表中附带该用户对每道题的评测状态 (例如 AC 通过 / WA 未通过 / 未尝试)，供前端渲染完成度。**
-* [ ] **4.2 提交接收接口:** 实现 `POST /submissions` 接口，完成请求 Payload 解析并推入评测队列。
-* [ ] **4.3 历史记录接口:** 实现 `GET /submissions` 接口，允许获取当前用户的历史提交记录列表（含代码片段与每次评测的详细状态结果）。
-* [ ] **4.3 SSE 推送接口:** 实现 `GET /submissions/{id}/stream`，接管 `http.Flusher`，将评测结果异步推流至客户端。
-* [ ] **4.4 消息队列容灾恢复:** 增加服务初始化的崩溃恢复逻辑 (Crash Recovery)——系统启动时读取 SQLite，重新拉起由于意外断电导致的、状态驻留在 `PENDING/RUNNING` 的孤儿判题。
+* [x] **4.1 题目分发接口:** 实现带鉴权的 `GET /problems` 和 `GET /problems/{id}` 接口。**重点：除了返回题目描述和下发 Python 代码脚手架 (Scaffolding)，还需要在列表中附带该用户对每道题的评测状态 (例如 AC 通过 / WA 未通过 / 未尝试)，供前端渲染完成度。**
+* [x] **4.2 提交接收接口:** 实现 `POST /submissions` 接口，完成请求 Payload 解析并推入评测队列。
+* [x] **4.3 历史记录接口:** 实现 `GET /submissions` 接口，允许获取当前用户的历史提交记录列表（含代码片段与每次评测的详细状态结果）。
+* [x] **4.3 SSE 推送接口:** 实现 `GET /submissions/{id}/stream`，接管 `http.Flusher`，将评测结果异步推流至客户端。
+* [x] **4.4 消息队列容灾恢复:** 增加服务初始化的崩溃恢复逻辑 (Crash Recovery)——系统启动时读取 SQLite，重新拉起由于意外断电导致的、状态驻留在 `PENDING/RUNNING` 的孤儿判题。
 
 ### Phase 5: VS Code 插件开发 (Client Application)
 
