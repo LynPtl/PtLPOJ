@@ -1,10 +1,10 @@
-# PtLPOJ (Python Training & Learning Platform Online Judge)
+# PtLPOJ (Ptlantern's Learning Platform Online Judge)
 
 [![Platform](https://img.shields.io/badge/Platform-VS%20Code-blue.svg)](https://code.visualstudio.com/)
 [![Language](https://img.shields.io/badge/Language-Go%20%7C%20TypeScript-00ADD8.svg)](#)
 [![Docker](https://img.shields.io/badge/Sandbox-Docker-2496ED.svg)](#)
 
-PtLPOJ (Python Training & Learning Platform Online Judge) 是一款轻量级、安全的在线评测系统，专为局域网内的内部 Python 培训和教学场景设计。
+PtLPOJ (Ptlantern's Learning Platform Online Judge) 是一款轻量级、安全的在线评测系统，专为局域网内的内部 Python 培训和教学场景设计。
 
 它采用整洁的客户端-服务器架构，摒弃了传统的网页端刷题体验，将所有操作（题目浏览、代码编写、评测反馈）深度整合进 Visual Studio Code 插件中。通过 Go 编写的高并发判题内核与基于 Docker 的沙盒技术，确保每一份不受信代码都能在隔离、受限的环境中安全、快速地得到验证。
 

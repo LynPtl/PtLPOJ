@@ -1,6 +1,6 @@
 # PtLPOJ System Architecture & Design
 
-本文档详细描述了 PtLPOJ (Python Training & Learning Platform Online Judge) 的系统架构、组件交互方式以及核心技术选型背后的思考。
+本文档详细描述了 PtLPOJ (Ptlantern's Learning Platform Online Judge) 的系统架构、组件交互方式以及核心技术选型背后的思考。
 
 ---
 
