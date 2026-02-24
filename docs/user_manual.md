@@ -1,6 +1,6 @@
 # PtLPOJ User Manual
 
-欢迎使用 **PtLPOJ (Personal Local Python Online Judge)**，这是一款专为内部团队和教学场景打造的极轻量、高安全的代码评测平台。本手册将指引您如何在 VS Code 中沉浸式地刷题与发布测试。
+欢迎使用 **PtLPOJ (Python Training & Learning Platform Online Judge)**，这是一款专为内部团队和教学场景打造的极轻量、高安全的代码评测平台。本手册将指引您如何在 VS Code 中沉浸式地刷题与发布测试。
 
 ---
 

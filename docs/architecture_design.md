@@ -1,12 +1,12 @@
 # PtLPOJ System Architecture & Design
 
-本文档详细描述了 PtLPOJ (Personal/Private Local Python Online Judge) 的系统架构、组件交互方式以及核心技术选型背后的思考。
+本文档详细描述了 PtLPOJ (Python Training & Learning Platform Online Judge) 的系统架构、组件交互方式以及核心技术选型背后的思考。
 
 ---
 
 ## 1. 宏观架构概览 (High-Level Architecture)
 
-PtLPOJ 采用经典的 **Client-Server-Sandbox (C-S-S)** 三层解耦架构，专为局域网内的内部团队或教学场景设计。它的核心设计理念是**“重判题，轻前端”**，通过 VS Code 插件提供沉浸式的开发者体验。
+PtLPOJ 采用整洁的 **Client-Server-Sandbox (C-S-S)** 三层解耦架构。其核心设计理念是**“重判题，轻前端”**与**“元数据分离”**：题目详情与脚手架代码通过 API 动态获取，而敏感的评测用例则永远保留在服务端，实现懒加载与数据的绝对安全性。
 
 ```mermaid
 graph TD
@@ -72,7 +72,7 @@ graph TD
 ### 2.1 客户端层：VS Code 插件 (Client Tier)
 * **职责**：替代传统的 Web 浏览器前端，负责身份验证交互、题目树状导航、Markdown 富文本渲染以及代码的本地读写与提交。
 * **技术选型**：`TypeScript` + `VS Code Extension API`。
-* **安全凭据管理**：JWT Token 绝不硬编码或存放在普通配置文件中，而是利用 `context.secrets.store()` 写入宿主操作系统的高级凭据管理器 (如 Windows Credential Manager, macOS Keychain)。
+* **通信与安全**：使用 `Axios` 进行可靠的 HTTP 通信。JWT Token 绝不硬编码或存放在普通配置文件中，而是利用 `context.secrets.store()` (VS Code Secrets API) 写入宿主操作系统的高级凭据管理器 (如 Windows Credential Manager, macOS Keychain)。
 * **离线容忍度**：题目模板拉取到本地工作区后，断网状态下依然能够继续编写核心逻辑代码或使用本地 Python 解释器进行调试。
 
 ### 2.2 接入层：网关与中间件 (API Gateway & Middleware)
