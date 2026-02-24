@@ -1,0 +1,29 @@
+# Binaries
+server/server
+client/*.vsix
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Database
+server/*.db
+server/*.db-shm
+server/*.db-wal
+
+# Dependency directories
+node_modules/
+dist/
+out/
+
+# IDE files
+.vscode/
+*.swp
+*.swo
+
+# Temporary/Log files
+server/server.log
+server/server.pid
+server/token.json
+server/e2e_test.py
+server/token_response.json

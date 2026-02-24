@@ -65,28 +65,28 @@
 
 ### Phase 1: 数据模型与存储层初始化 (Data Layer)
 
-* [ ] **1.1 定义静态数据结构:** 制定本地题目配置规范（设计 `problems.json` 的 Schema 以及测试用例目录结构）。
-* [ ] **1.2 关系型数据库 Schema 设计:** 在 Go 中使用 GORM 或原生 SQL 编写 SQLite 建表脚本（包含 `users`, `submissions` 表）。
-* [ ] **1.3 基础 CRUD 封装:** 完成服务端对 SQLite 和本地题目配置的读取逻辑封装。
-* [ ] **1.4 数据库并发写优化:** 在 SQLite DSN 连接配置中显式开启 Write-Ahead Logging (WAL) 模式，以支持多个 Judge Worker 的并发状态更新，防止 `Database is locked` 错误。
+* [x] **1.1 定义静态数据结构:** 制定本地题目配置规范（设计 `problems.json` 的 Schema 以及测试用例目录结构）。
+* [x] **1.2 关系型数据库 Schema 设计:** 在 Go 中使用 GORM 或原生 SQL 编写 SQLite 建表脚本（包含 `users`, `submissions` 表）。
+* [x] **1.3 基础 CRUD 封装:** 完成服务端对 SQLite 和本地题目配置的读取逻辑封装。
+* [x] **1.4 数据库并发写优化:** 在 SQLite DSN 连接配置中显式开启 Write-Ahead Logging (WAL) 模式，以支持多个 Judge Worker 的并发状态更新，防止 `Database is locked` 错误。
 
 ### Phase 2: 沙盒评测引擎开发与安全加固 (Sandbox Engine)
 
-* [ ] **2.1 Docker SDK 集成:** 在 Go 服务中引入 Docker API SDK，编写函数实现镜像拉取与容器生命周期管理（Create, Start, Stop, Remove）。
-* [ ] **2.2 隔离限制与高阶安全防护:** 
+* [x] **2.1 Docker SDK 集成:** 在 Go 服务中引入 Docker API SDK，编写函数实现镜像拉取与容器生命周期管理（Create, Start, Stop, Remove）。
+* [x] **2.2 隔离限制与高阶安全防护:** 
   * 显式声明 `NetworkDisabled: true`，利用 `HostConfig` 设置 Memory/CPU 限制。
   * **(防爆炸)** 添加 `PidsLimit` 防止 Fork Bomb 耗尽宿主机资源。
   * **(防逃逸)** 设置 `CapDrop: ["ALL"]` 移除特权，并以低权限非 root 用户拉起执行；开启 `ReadonlyRootfs: true`，不挂载任何写权限目录。
-* [ ] **2.3 评测流与熔断实现:** 编写 Worker 协程，负责执行环境拉起与流捕获：
+* [x] **2.3 评测流与熔断实现:** 编写 Worker 协程，负责执行环境拉起与流捕获：
   * **(防 OLE)** 获取 `stdout/stderr` 时包裹 `io.LimitReader` 实施严格的上限截断，触发即拦截判为 OLE。
   * **(防超时)** 在调用 Docker SDK API 时传入基于 Wall-Time 超时的 `Context`，主动猎杀类似 `time.sleep` 等待阻塞攻击的沙箱。
-* [ ] **2.4 评测结果解析 (Result Parsing):** 解析 `doctest` 静默运行后的输出流，精确捕获 `Exit Code` 与控制台报错信息，提取第一处 Failed 异常点以定位 `failed_at_case` 序号。
+* [x] **2.4 评测结果解析 (Result Parsing):** 解析 `doctest` 静默运行后的输出流，精确捕获 `Exit Code` 与控制台报错信息，提取第一处 Failed 异常点以定位 `failed_at_case` 序号。
 
 ### Phase 3: 鉴权模块与安全性加固 (Auth & Security)
 
-* [ ] **3.1 邮件服务集成:** 封装 SMTP 伪装适配层（当前开发阶段仅在服务端 Console 打印 OTP）。**关键代办**：未来需要对接真实的 SMTP 服务器 (如 AWS SES, 腾讯云邮件) 完成真正的邮件下发，防止遗忘。
-* [ ] **3.2 JWT 签发与鉴权:** 完成 `/login` 和 `/verify` 接口。
-* [ ] **3.3 中间件开发:** 编写 Go Middleware，实现 JWT Header 拦截与基础的 Token Bucket 限流策略。
+* [x] **3.1 邮件服务集成:** 封装 SMTP 伪装适配层（当前开发阶段仅在服务端 Console 打印 OTP）。**关键代办**：未来需要对接真实的 SMTP 服务器 (如 AWS SES, 腾讯云邮件) 完成真正的邮件下发，防止遗忘。
+* [x] **3.2 JWT 签发与鉴权:** 完成 `/login` 和 `/verify` 接口。
+* [x] **3.3 中间件开发:** 编写 Go Middleware，实现 JWT Header 拦截与基础的 Token Bucket 限流策略。
 
 ### Phase 4: REST API 与 SSE 通信层 (Transport Layer)
 

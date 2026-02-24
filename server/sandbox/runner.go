@@ -3,11 +3,13 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -24,6 +26,7 @@ type RunResult struct {
 	ExecuteTimeMs int
 	FailedAtCase  int
 	OOMKilled     bool
+	MemoryPeakKb  int
 }
 
 // RunCode spins up a highly restricted Docker container to execute the provided payload.
@@ -81,15 +84,45 @@ func RunCode(submissionID string, payload string, timeLimitMs int, memoryLimitKB
 
 	containerID := resp.ID
 
-	// 3. Start Container & Execute
+	// 4. Start Container & Execute
 	startTime := time.Now()
 	if err := DockerClient.ContainerStart(ctx, containerID, types.ContainerStartOptions{}); err != nil {
 		_ = DockerClient.ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{Force: true})
+		// Note: we don't return nil, statsDone is not closed if Start fails but we catch it here.
 		return nil, fmt.Errorf("failed to start container: %w", err)
 	}
 
-	// 4. Wait for completion or Timeout
-	// We add a realistic buffer (+500ms) over the problem's time limit to account for Docker startup overhead
+	// 4. Start a stats collector goroutine using Streaming API
+	var maxMem int64
+	var memMu sync.Mutex
+	statsCtx, statsCancel := context.WithCancel(ctx)
+	defer statsCancel()
+
+	go func() {
+		stats, err := DockerClient.ContainerStats(statsCtx, containerID, true)
+		if err != nil {
+			return
+		}
+		defer stats.Body.Close()
+
+		decoder := json.NewDecoder(stats.Body)
+		for {
+			var v types.StatsJSON
+			if err := decoder.Decode(&v); err != nil {
+				return // Stream closed or context cancelled
+			}
+			memMu.Lock()
+			if v.MemoryStats.Usage > uint64(maxMem) {
+				maxMem = int64(v.MemoryStats.Usage)
+			}
+			if v.MemoryStats.MaxUsage > uint64(maxMem) {
+				maxMem = int64(v.MemoryStats.MaxUsage)
+			}
+			memMu.Unlock()
+		}
+	}()
+
+	// 5. Wait for completion or Timeout
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(timeLimitMs+500)*time.Millisecond)
 	defer cancel()
 
@@ -101,7 +134,6 @@ func RunCode(submissionID string, payload string, timeLimitMs int, memoryLimitKB
 	select {
 	case err := <-errCh:
 		if err != nil && timeoutCtx.Err() == context.DeadlineExceeded {
-			// TLE triggered by our context wrap
 			timeoutTriggered = true
 			DockerClient.ContainerKill(ctx, containerID, "SIGKILL")
 		} else if err != nil {
@@ -109,12 +141,18 @@ func RunCode(submissionID string, payload string, timeLimitMs int, memoryLimitKB
 		}
 	case status := <-statusCh:
 		exitCode = int(status.StatusCode)
-	case <-timeoutCtx.Done(): // Context deadline hit
+	case <-timeoutCtx.Done():
 		timeoutTriggered = true
 		DockerClient.ContainerKill(ctx, containerID, "SIGKILL")
 	}
 
+	statsCancel() // Stop streaming
 	execTime := int(time.Since(startTime).Milliseconds())
+
+	// Lock one last time to get the final peak
+	memMu.Lock()
+	peakKb := int(maxMem / 1024)
+	memMu.Unlock()
 
 	// 5. Inspect for constraints and OOM
 	inspect, err := DockerClient.ContainerInspect(ctx, containerID)
@@ -165,6 +203,7 @@ func RunCode(submissionID string, payload string, timeLimitMs int, memoryLimitKB
 		ExecuteTimeMs: execTime,
 		FailedAtCase:  failedCase,
 		OOMKilled:     oomKilled,
+		MemoryPeakKb:  peakKb,
 	}, nil
 }
 

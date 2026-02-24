@@ -26,7 +26,7 @@ func SetupRouter() *http.ServeMux {
 	protectedMux := http.NewServeMux()
 
 	// Phase 4 Routes -> Problems API
-	protectedMux.HandleFunc("/api/problems", func(w http.ResponseWriter, r *http.Request) {
+	protectedMux.HandleFunc("/api/problems/", func(w http.ResponseWriter, r *http.Request) {
 		// Extremely simple router without 3rd party frameworks like Gin or standard Go 1.22 methods
 		if r.URL.Path == "/api/problems" || r.URL.Path == "/api/problems/" {
 			handlers.GetProblemsHandler(w, r)

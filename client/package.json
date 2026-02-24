@@ -1,8 +1,14 @@
 {
   "name": "ptlpoj-client",
+  "publisher": "ptlpoj",
   "displayName": "PtLPOJ Local Judge",
   "description": "Inner Team Python Online Judge Client",
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LynPtl/PtLPOJ.git"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.80.0"
   },

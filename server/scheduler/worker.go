@@ -123,5 +123,5 @@ func processSubmission(s *models.Submission) {
 	}
 
 	// E. Save to DB
-	storage.UpdateSubmissionStatus(s.ID, status, msg, res.ExecuteTimeMs, memLimit, res.FailedAtCase)
+	storage.UpdateSubmissionStatus(s.ID, status, msg, res.ExecuteTimeMs, res.MemoryPeakKb, res.FailedAtCase)
 }
