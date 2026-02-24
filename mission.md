@@ -7,7 +7,7 @@
 ### 1.1 核心需求边界
 
 * **权限管控 (Access Control):** 采用无密码的 OTP（一次性密码）邮箱验证机制，结合 JWT 实现接口级鉴权。基于白名单/指定域名拦截非法注册。
-* **数据防泄漏 (Data Loss Prevention):** 题目列表与详情采用懒加载分离；测试用例（`.in/.out`）仅在服务端沙盒内存周期内可见，严格禁止向客户端下发具体的报错用例数据。
+* **数据防泄漏 (Data Loss Prevention):** 题目列表与详情采用懒加载分离；隐藏用的测试用例数据仅在服务端沙盒内存周期内可见，严格禁止向客户端下发具体的报错用例数据。
 * **语言限制:** 仅支持 Python 3，免去编译阶段开销，缩短判题生命周期。
 
 ## 2. 架构设计与技术栈 (Architecture & Tech Stack)
@@ -19,7 +19,7 @@
 * **Judge Server (调度核心):** 基于 Go。处理并发提交，维护任务队列，调度底层容器生命周期。
 * **Sandbox (评测沙盒):** 基于 Docker Engine API。动态拉起 `alpine-python3` 容器，利用 `cgroups` 限制 CPU/Memory。
 * **Storage (数据持久化):** * 关系型数据：SQLite (存储 User, Token, Submission 状态)。
-* 题目与用例：本地 File System (存储题单 JSON 索引、Markdown 题面、`.in/.out` I/O 文件)。
+* 题目与用例：本地 File System (存储题单 JSON 索引、Markdown 题面、tests.txt 隐藏测试用例)。
 
 
 
@@ -76,11 +76,11 @@
 * [ ] **2.2 隔离限制与高阶安全防护:** 
   * 显式声明 `NetworkDisabled: true`，利用 `HostConfig` 设置 Memory/CPU 限制。
   * **(防爆炸)** 添加 `PidsLimit` 防止 Fork Bomb 耗尽宿主机资源。
-  * **(防逃逸)** 设置 `CapDrop: ["ALL"]` 移除特权，并低权限用户运行；开启 `ReadonlyRootfs: true`，仅挂载评测执行必须的 I/O 目录为读写。
+  * **(防逃逸)** 设置 `CapDrop: ["ALL"]` 移除特权，并以低权限非 root 用户拉起执行；开启 `ReadonlyRootfs: true`，不挂载任何写权限目录。
 * [ ] **2.3 评测流与熔断实现:** 编写 Worker 协程，负责执行环境拉起与流捕获：
   * **(防 OLE)** 获取 `stdout/stderr` 时包裹 `io.LimitReader` 实施严格的上限截断，触发即拦截判为 OLE。
   * **(防超时)** 在调用 Docker SDK API 时传入基于 Wall-Time 超时的 `Context`，主动猎杀类似 `time.sleep` 等待阻塞攻击的沙箱。
-* [ ] **2.4 健壮 Diff 逻辑:** 实现容错型结果对比函数，支持自动忽略行末不可见字符(空格/制表符)及文件末尾的空余换行。
+* [ ] **2.4 评测结果解析 (Result Parsing):** 解析 `doctest` 静默运行后的输出流，精确捕获 `Exit Code` 与控制台报错信息，提取第一处 Failed 异常点以定位 `failed_at_case` 序号。
 
 ### Phase 3: 鉴权模块与安全性加固 (Auth & Security)
 
