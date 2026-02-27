@@ -37,7 +37,7 @@ export class LoginViewPanel {
         this._panel = panel;
         this._extensionUri = extensionUri;
 
-        this._update();
+        this._panel.webview.html = this._getHtmlForWebview();
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
         this._panel.webview.onDidReceiveMessage(
@@ -48,6 +48,13 @@ export class LoginViewPanel {
                         return;
                     case 'verifyOtp':
                         await this._handleVerifyOtp(message.email, message.otp);
+                        return;
+                    case 'updateConfig':
+                        vscode.workspace.getConfiguration('ptlpoj').update('serverUrl', message.url, vscode.ConfigurationTarget.Global).then(() => {
+                            this._panel.webview.postMessage({ type: 'configUpdated' });
+                            // Trigger refresh of tree view
+                            vscode.commands.executeCommand('ptlpoj.refreshProblems');
+                        });
                         return;
                 }
             },
@@ -90,17 +97,12 @@ export class LoginViewPanel {
         }
     }
 
-    private _update() {
-        this._panel.webview.html = this._getHtmlForWebview();
-    }
-
     private _getHtmlForWebview() {
         return `
             <!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
                     body {
                         font-family: var(--vscode-font-family);
@@ -111,7 +113,7 @@ export class LoginViewPanel {
                         flex-direction: column;
                         align-items: center;
                         justify-content: center;
-                        height: 70vh;
+                        height: 85vh;
                     }
                     .container {
                         max-width: 400px;
@@ -149,90 +151,139 @@ export class LoginViewPanel {
                     }
                     button:hover { background: var(--vscode-button-hoverBackground); }
                     button:disabled { opacity: 0.5; cursor: not-allowed; }
-                    .error { color: var(--vscode-errorForeground); font-size: 12px; margin-top: 10px; text-align: center; }
-                    .success { color: var(--vscode-testing-iconPassed); font-size: 12px; margin-top: 10px; text-align: center; }
-                    #otp-step { display: none; }
+                    .feedback { margin-top: 15px; font-size: 12px; text-align: center; min-height: 1.5em; }
+                    .feedback-error { color: var(--vscode-errorForeground); }
+                    .feedback-success { color: var(--vscode-testing-iconPassed); }
+                    
+                    .server-config {
+                        margin-top: 25px;
+                        border-top: 1px solid var(--vscode-widget-border);
+                        padding-top: 15px;
+                        text-align: center;
+                    }
+                    .link-btn {
+                        background: none;
+                        border: none;
+                        color: var(--vscode-textLink-foreground);
+                        cursor: pointer;
+                        font-size: 11px;
+                        text-decoration: underline;
+                        padding: 0;
+                        width: auto;
+                    }
+                    #configPanel {
+                        text-align: left;
+                        background: var(--vscode-editor-background);
+                        padding: 10px;
+                        border-radius: 4px;
+                        border: 1px solid var(--vscode-widget-border);
+                    }
+                    #otpStep { display: none; }
                 </style>
             </head>
             <body>
                 <div class="container">
                     <h2>PtLPOJ 登录</h2>
                     
-                    <div id="email-step">
+                    <div id="emailStep">
                         <div class="input-group">
-                            <label>邮箱地址</label>
+                            <label>邮箱地址 (Email)</label>
                             <input type="email" id="email" placeholder="you@example.com" />
                         </div>
-                        <button id="btn-send">发送验证码</button>
+                        <button id="btnSend">发送验证码 (Request OTP)</button>
                     </div>
 
-                    <div id="otp-step">
-                        <p style="font-size: 12px; opacity: 0.8; text-align: center;" id="sent-msg"></p>
+                    <div id="otpStep">
+                        <p style="font-size: 12px; opacity: 0.8; text-align: center;" id="sentMsg"></p>
                         <div class="input-group">
-                            <label>6 位验证码</label>
+                            <label>6 位验证码 (OTP)</label>
                             <input type="text" id="otp" maxlength="6" placeholder="000000" />
                         </div>
-                        <button id="btn-verify">立即登录</button>
+                        <button id="btnVerify">立即登录 (Login)</button>
                         <p style="text-align: center; font-size: 11px; margin-top: 15px;">
-                            <a href="#" id="back-link" style="color: var(--vscode-textLink-foreground); text-decoration: none;">修改邮箱</a>
+                            <a href="#" id="backLink" style="color: var(--vscode-textLink-foreground); text-decoration: none;">← 修改邮箱</a>
                         </p>
                     </div>
 
-                    <div id="msg" class="error"></div>
+                    <div class="feedback" id="feedbackArea"></div>
+
+                    <div class="server-config">
+                        <button class="link-btn" id="toggleConfig">⚙️ 修改服务器端口/地址 (Server Config)</button>
+                        <div id="configPanel" style="display: none; margin-top: 10px;">
+                            <label style="font-size: 11px;">API Base URL:</label>
+                            <input type="text" id="serverUrlInput" style="font-size: 11px; padding: 5px;" value="${getServerUrl()}">
+                            <button id="saveConfig" style="margin-top: 10px; padding: 6px; font-size: 11px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);">保存并刷新 (Save & Refresh)</button>
+                        </div>
+                    </div>
                 </div>
 
                 <script>
                     const vscode = acquireVsCodeApi();
-                    const emailStep = document.getElementById('email-step');
-                    const otpStep = document.getElementById('otp-step');
-                    const emailInput = document.getElementById('email');
-                    const otpInput = document.getElementById('otp');
-                    const msgDiv = document.getElementById('msg');
-                    const btnSend = document.getElementById('btn-send');
-                    const btnVerify = document.getElementById('btn-verify');
-                    const sentMsg = document.getElementById('sent-msg');
-                    const backLink = document.getElementById('back-link');
-
+                    const emailStep = document.getElementById('emailStep');
+                    const otpStep = document.getElementById('otpStep');
+                    const feedbackArea = document.getElementById('feedbackArea');
+                    const btnSend = document.getElementById('btnSend');
+                    const btnVerify = document.getElementById('btnVerify');
                     let currentEmail = '';
 
-                    btnSend.addEventListener('click', () => {
-                        const email = emailInput.value.trim();
+                    document.getElementById('btnSend').onclick = () => {
+                        const email = document.getElementById('email').value.trim();
                         if (!email) return;
+                        currentEmail = email;
                         btnSend.disabled = true;
-                        msgDiv.textContent = '';
+                        feedbackArea.className = 'feedback';
+                        feedbackArea.innerText = '正在发送请求...';
                         vscode.postMessage({ command: 'requestOtp', email });
-                    });
+                    };
 
-                    btnVerify.addEventListener('click', () => {
-                        const otp = otpInput.value.trim();
+                    document.getElementById('btnVerify').onclick = () => {
+                        const otp = document.getElementById('otp').value.trim();
                         if (otp.length !== 6) return;
                         btnVerify.disabled = true;
-                        msgDiv.textContent = '';
+                        feedbackArea.className = 'feedback';
+                        feedbackArea.innerText = '正在验证中...';
                         vscode.postMessage({ command: 'verifyOtp', email: currentEmail, otp });
-                    });
+                    };
 
-                    backLink.addEventListener('click', (e) => {
+                    document.getElementById('backLink').onclick = (e) => {
                         e.preventDefault();
                         otpStep.style.display = 'none';
                         emailStep.style.display = 'block';
                         btnSend.disabled = false;
-                        msgDiv.textContent = '';
-                    });
+                        feedbackArea.innerText = '';
+                    };
+
+                    document.getElementById('toggleConfig').onclick = () => {
+                        const p = document.getElementById('configPanel');
+                        p.style.display = p.style.display === 'none' ? 'block' : 'none';
+                    };
+
+                    document.getElementById('saveConfig').onclick = () => {
+                        const newUrl = document.getElementById('serverUrlInput').value.trim();
+                        feedbackArea.className = 'feedback';
+                        feedbackArea.innerText = '正在保存设置...';
+                        vscode.postMessage({ command: 'updateConfig', url: newUrl });
+                    };
 
                     window.addEventListener('message', event => {
                         const message = event.data;
                         switch (message.type) {
                             case 'otpSent':
-                                currentEmail = message.email;
                                 emailStep.style.display = 'none';
                                 otpStep.style.display = 'block';
-                                sentMsg.textContent = '验证码已发送至：' + currentEmail;
+                                document.getElementById('sentMsg').innerText = '验证码已发送至: ' + currentEmail;
+                                feedbackArea.className = 'feedback feedback-success';
+                                feedbackArea.innerText = '验证码已发送，请查收控制台/邮件';
                                 break;
                             case 'error':
                                 btnSend.disabled = false;
                                 btnVerify.disabled = false;
-                                msgDiv.className = 'error';
-                                msgDiv.textContent = message.message;
+                                feedbackArea.className = 'feedback feedback-error';
+                                feedbackArea.innerText = '失败: ' + message.message;
+                                break;
+                            case 'configUpdated':
+                                feedbackArea.className = 'feedback feedback-success';
+                                feedbackArea.innerText = '服务器地址已更新！';
                                 break;
                         }
                     });

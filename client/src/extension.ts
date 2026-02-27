@@ -197,6 +197,23 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // Command: Set Server URL
+    const setConfigCommand = vscode.commands.registerCommand('ptlpoj.setConfig', async () => {
+        const currentUrl = getServerUrl();
+        const newUrl = await vscode.window.showInputBox({
+            prompt: 'Enter PtLPOJ Server API URL',
+            placeHolder: 'http://localhost:8080/api',
+            value: currentUrl,
+            ignoreFocusOut: true
+        });
+
+        if (newUrl && newUrl !== currentUrl) {
+            await vscode.workspace.getConfiguration('ptlpoj').update('serverUrl', newUrl, vscode.ConfigurationTarget.Global);
+            vscode.window.showInformationMessage(`PtLPOJ: Server URL updated to ${newUrl}`);
+            treeProvider.refresh();
+        }
+    });
+
     // Command: Auth Options QuickPick
     const authOptionsCommand = vscode.commands.registerCommand('ptlpoj.authOptions', async () => {
         const choice = await vscode.window.showQuickPick(['Re-login (OTP)', 'Logout'], {
@@ -214,6 +231,7 @@ export function activate(context: vscode.ExtensionContext) {
         loginCommand,
         logoutCommand,
         authOptionsCommand,
+        setConfigCommand,
         completeLoginCommand,
         refreshCommand,
         openProblemCommand,
