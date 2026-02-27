@@ -72,8 +72,13 @@ export class PtLpoTreeProvider implements vscode.TreeDataProvider<ProblemNode> {
 
         const token = await this.context.secrets.get('ptlpoj_jwt_token');
         if (!token) {
-            vscode.window.showWarningMessage('PtLPOJ: Please log in to view problems.');
-            return [];
+            return [new ProblemNode(
+                "$(sign-in) 点击登录 PtLPOJ",
+                -1, // Special ID for onboarding
+                "",
+                "UNAUTHENTICATED",
+                vscode.TreeItemCollapsibleState.None
+            )];
         }
 
         try {
@@ -144,10 +149,19 @@ export class ProblemNode extends vscode.TreeItem {
 
         // Setup Icon and Icon Color based on status
         this.iconPath = new vscode.ThemeIcon(this.getIconForStatus(status), this.getColorForStatus(status));
+
+        if (problemId === -1) {
+            this.command = {
+                title: "Login",
+                command: "ptlpoj.login",
+                arguments: []
+            };
+            this.contextValue = 'onboarding';
+        }
     }
 
     // Connect node to our "view problem" command
-    command = {
+    command?: vscode.Command = {
         title: "View Problem",
         command: "ptlpoj.openProblem",
         arguments: [this]

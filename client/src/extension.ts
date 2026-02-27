@@ -6,6 +6,7 @@ import { PtLpoTreeProvider, ProblemNode } from './treeProvider';
 import { PtLpoCodeLensProvider } from './codeLensProvider';
 import { ProblemViewPanel } from './problemView';
 import { DashboardViewPanel } from './dashboardView';
+import { LoginViewPanel } from './loginView';
 import * as http from 'http';
 
 const SERVER_URL = 'http://localhost:8080/api';
@@ -31,9 +32,20 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.languages.registerCodeLensProvider({ language: 'python', scheme: 'file' }, codeLensProvider);
 
     // Command: Login
-    const loginCommand = vscode.commands.registerCommand('ptlpoj.login', async () => {
-        await handleLogin(context);
+    const loginCommand = vscode.commands.registerCommand('ptlpoj.login', () => {
+        LoginViewPanel.createOrShow(context.extensionUri);
+    });
+
+    // Command: Complete Login (Called from Webview)
+    const completeLoginCommand = vscode.commands.registerCommand('ptlpoj.completeLogin', async (token: string) => {
+        await context.secrets.store(TOKEN_KEY, token);
+        updateStatusBar(context);
         treeProvider.refresh();
+
+        vscode.window.showInformationMessage('Successfully logged into PtLPOJ! 🎉');
+
+        // Auto-open Dashboard for a smooth onboarding experience
+        vscode.commands.executeCommand('ptlpoj.openDashboard');
     });
 
     // Command: Refresh Problems
@@ -174,9 +186,22 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    context.subscriptions.push(loginCommand, refreshCommand, openProblemCommand, openDashboardCommand, submitCommand, runTestCommand, setFilterSortCommand, diffSubmissionCommand, searchProblemsCommand);
+    context.subscriptions.push(
+        loginCommand,
+        completeLoginCommand,
+        refreshCommand,
+        openProblemCommand,
+        openDashboardCommand,
+        submitCommand,
+        runTestCommand,
+        setFilterSortCommand,
+        diffSubmissionCommand,
+        searchProblemsCommand
+    );
 }
 
+// handleLogin is now replaced by LoginViewPanel flow, 
+// leaving it here temporarily if needed for fallback, but it's no longer the default path.
 async function handleLogin(context: vscode.ExtensionContext) {
     const email = await vscode.window.showInputBox({
         prompt: 'Enter your registered email for PtLPOJ',
