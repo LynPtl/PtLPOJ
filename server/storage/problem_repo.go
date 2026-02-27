@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"pt_lpoj/models"
@@ -95,6 +96,11 @@ func GetAllProblems() []models.Problem {
 	for _, p := range ProblemCache {
 		list = append(list, p)
 	}
-	// Note: We might want to sort this by ID later
+
+	// Sort by ID to ensure stable order
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].ID < list[j].ID
+	})
+
 	return list
 }

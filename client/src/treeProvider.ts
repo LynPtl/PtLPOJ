@@ -17,7 +17,39 @@ export class PtLpoTreeProvider implements vscode.TreeDataProvider<ProblemNode> {
     private _onDidChangeTreeData: vscode.EventEmitter<ProblemNode | undefined | null | void> = new vscode.EventEmitter<ProblemNode | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<ProblemNode | undefined | null | void> = this._onDidChangeTreeData.event;
 
+    private filterStatus: string = 'ALL';
+    private filterTag: string = 'ALL';
+    private sortBy: 'id' | 'status' | 'difficulty' = 'id';
+
     constructor(private context: vscode.ExtensionContext) { }
+
+    getFilterSortState() {
+        return { status: this.filterStatus, tag: this.filterTag, sort: this.sortBy };
+    }
+
+    public async getAllTags(): Promise<string[]> {
+        const token = await this.context.secrets.get('ptlpoj_jwt_token');
+        if (!token) return [];
+        try {
+            const res = await axios.get(`${SERVER_URL}/problems`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const tags = new Set<string>();
+            res.data.forEach((p: any) => {
+                if (p.tags) p.tags.forEach((t: string) => tags.add(t));
+            });
+            return Array.from(tags).sort();
+        } catch {
+            return [];
+        }
+    }
+
+    setFilterSort(status: string, tag: string, sort: 'id' | 'status' | 'difficulty') {
+        this.filterStatus = status;
+        this.filterTag = tag;
+        this.sortBy = sort;
+        this.refresh();
+    }
 
     refresh(): void {
         this._onDidChangeTreeData.fire();
@@ -43,7 +75,33 @@ export class PtLpoTreeProvider implements vscode.TreeDataProvider<ProblemNode> {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
-            return res.data.map((p: any) => new ProblemNode(
+            let problems = res.data;
+
+            // 1. Filter by Status
+            if (this.filterStatus !== 'ALL') {
+                problems = problems.filter((p: any) => p.user_status === this.filterStatus);
+            }
+
+            // 2. Filter by Tag
+            if (this.filterTag !== 'ALL') {
+                problems = problems.filter((p: any) => p.tags && p.tags.includes(this.filterTag));
+            }
+
+            // 3. Sort
+            problems.sort((a: any, b: any) => {
+                if (this.sortBy === 'id') return a.id - b.id;
+                if (this.sortBy === 'difficulty') {
+                    const diffScale: any = { 'Easy': 1, 'Medium': 2, 'Hard': 3 };
+                    return (diffScale[a.difficulty] || 0) - (diffScale[b.difficulty] || 0);
+                }
+                if (this.sortBy === 'status') {
+                    const statusScale: any = { 'AC': 1, 'PENDING': 2, 'RUNNING': 2, 'WA': 3, 'TLE': 3, 'RE': 3, 'UNATTEMPTED': 4 };
+                    return (statusScale[a.user_status] || 99) - (statusScale[b.user_status] || 99);
+                }
+                return 0;
+            });
+
+            return problems.map((p: any) => new ProblemNode(
                 `${p.id}: ${p.title} (${p.difficulty})`,
                 p.id,
                 p.difficulty,

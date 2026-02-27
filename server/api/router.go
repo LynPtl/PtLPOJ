@@ -74,12 +74,15 @@ func SetupRouter() *http.ServeMux {
 		http.Error(w, "Endpoint Not Found", http.StatusNotFound)
 	})
 
+	// Phase 7 Routes -> Stats API
+	protectedMux.HandleFunc("/api/user/stats", handlers.GetUserStatsHandler)
+
 	// Mount the protected sub-router under /api/ with RequireAuth middleware
-	// We map the root prefixes explicitly because Go's default Mux matches trailing slashes to children
 	mux.Handle("/api/problems", middleware.RequireAuth(protectedMux))
 	mux.Handle("/api/problems/", middleware.RequireAuth(protectedMux))
 	mux.Handle("/api/submissions", middleware.RequireAuth(protectedMux))
 	mux.Handle("/api/submissions/", middleware.RequireAuth(protectedMux))
+	mux.Handle("/api/user/stats", middleware.RequireAuth(protectedMux))
 
 	log.Println("API Router configured successfully")
 	return mux

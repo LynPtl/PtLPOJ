@@ -3,6 +3,9 @@ import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PtLpoTreeProvider, ProblemNode } from './treeProvider';
+import { PtLpoCodeLensProvider } from './codeLensProvider';
+import { ProblemViewPanel } from './problemView';
+import { DashboardViewPanel } from './dashboardView';
 import * as http from 'http';
 
 const SERVER_URL = 'http://localhost:8080/api';
@@ -23,6 +26,10 @@ export function activate(context: vscode.ExtensionContext) {
     const treeProvider = new PtLpoTreeProvider(context);
     vscode.window.registerTreeDataProvider('ptlpoj.problemsView', treeProvider);
 
+    // Register CodeLens Provider for Python files
+    const codeLensProvider = new PtLpoCodeLensProvider();
+    vscode.languages.registerCodeLensProvider({ language: 'python', scheme: 'file' }, codeLensProvider);
+
     // Command: Login
     const loginCommand = vscode.commands.registerCommand('ptlpoj.login', async () => {
         await handleLogin(context);
@@ -39,12 +46,87 @@ export function activate(context: vscode.ExtensionContext) {
         await openProblem(context, node);
     });
 
-    // Command: Submit Code
-    const submitCommand = vscode.commands.registerCommand('ptlpoj.submitCode', async () => {
-        await submitCode(context, treeProvider);
+    // Command: Open Dashboard
+    const openDashboardCommand = vscode.commands.registerCommand('ptlpoj.openDashboard', async () => {
+        const token = await context.secrets.get(TOKEN_KEY);
+        if (!token) {
+            vscode.window.showErrorMessage('Please login first to view dashboard.');
+            return;
+        }
+        DashboardViewPanel.createOrShow(context.extensionUri, SERVER_URL, token);
     });
 
-    context.subscriptions.push(loginCommand, refreshCommand, openProblemCommand, submitCommand);
+    // Command: Submit Code
+    const submitCommand = vscode.commands.registerCommand('ptlpoj.submitCode', async (problemIdFromWebview?: number) => {
+        await submitCode(context, treeProvider, problemIdFromWebview);
+    });
+
+    // Command: Run Local Test
+    const runTestCommand = vscode.commands.registerCommand('ptlpoj.runTest', async (uri?: vscode.Uri, problemIdFromWebview?: number) => {
+        const terminal = vscode.window.activeTerminal || vscode.window.createTerminal('PtLPOJ Local Test');
+        terminal.show();
+        let targetUri = uri;
+
+        if (!targetUri && problemIdFromWebview) {
+            // Try to find the file in workspace if editor is not focused
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (workspaceFolders) {
+                const pyPath = path.join(workspaceFolders[0].uri.fsPath, `Solution_${problemIdFromWebview}.py`);
+                if (fs.existsSync(pyPath)) {
+                    targetUri = vscode.Uri.file(pyPath);
+                }
+            }
+        }
+
+        if (!targetUri && vscode.window.activeTextEditor) {
+            targetUri = vscode.window.activeTextEditor.document.uri;
+        }
+
+        if (targetUri) {
+            await vscode.workspace.openTextDocument(targetUri).then(doc => doc.save());
+            const isWin = process.platform === 'win32';
+            // PowerShell fix: use semicolon or just pick one. For simplicity and win typicality:
+            const cmd = isWin ? `python "${targetUri.fsPath}"` : `python3 "${targetUri.fsPath}" || python "${targetUri.fsPath}"`;
+            terminal.sendText(cmd);
+        } else {
+            vscode.window.showErrorMessage('No file found to run test! Please open your solution file.');
+        }
+    });
+
+    // Command: Set Filter and Sort
+    const setFilterSortCommand = vscode.commands.registerCommand('ptlpoj.setFilterSort', async () => {
+        const state = treeProvider.getFilterSortState();
+
+        // Step 1: Pick Category
+        const category = await vscode.window.showQuickPick(['Sort By', 'Filter by Status', 'Filter by Tag', 'Reset All'], {
+            placeHolder: `Currently: Sort:${state.sort}, Status:${state.status}, Tag:${state.tag}`
+        });
+
+        if (!category) return;
+
+        if (category === 'Reset All') {
+            treeProvider.setFilterSort('ALL', 'ALL', 'id');
+            return;
+        }
+
+        if (category === 'Sort By') {
+            const pick = await vscode.window.showQuickPick(['ID (Default)', 'Status (AC first)', 'Difficulty'], { placeHolder: 'Sort by...' });
+            if (!pick) return;
+            const sort = pick === 'ID (Default)' ? 'id' : pick === 'Status (AC first)' ? 'status' : 'difficulty';
+            treeProvider.setFilterSort(state.status, state.tag, sort as any);
+        } else if (category === 'Filter by Status') {
+            const pick = await vscode.window.showQuickPick(['ALL', 'AC', 'WA', 'TLE', 'RE', 'UNATTEMPTED'], { placeHolder: 'Filter by status...' });
+            if (!pick) return;
+            treeProvider.setFilterSort(pick, state.tag, state.sort);
+        } else if (category === 'Filter by Tag') {
+            const allTags = await treeProvider.getAllTags();
+            const pick = await vscode.window.showQuickPick(['ALL', ...allTags], { placeHolder: 'Choose a tag...' });
+            if (!pick) return;
+            treeProvider.setFilterSort(state.status, pick, state.sort);
+        }
+    });
+
+    context.subscriptions.push(loginCommand, refreshCommand, openProblemCommand, openDashboardCommand, submitCommand, runTestCommand, setFilterSortCommand);
 }
 
 async function handleLogin(context: vscode.ExtensionContext) {
@@ -118,56 +200,69 @@ async function openProblem(context: vscode.ExtensionContext, node: ProblemNode) 
             fs.writeFileSync(pyPath, data.scaffold);
         }
 
-        // Open MD preview and then Python source
-        const mdUri = vscode.Uri.file(mdPath);
-        await vscode.commands.executeCommand('markdown.showPreviewToSide', mdUri);
-
+        // Open Python source on original view
         const pyUri = vscode.Uri.file(pyPath);
         const doc = await vscode.workspace.openTextDocument(pyUri);
-        await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
+        await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, preview: false });
+
+        // Open Webview Problem View
+        ProblemViewPanel.createOrShow(context.extensionUri, data, node.problemId);
 
     } catch (error: any) {
         vscode.window.showErrorMessage(`Failed to fetch problem metadata: ${error.message}`);
     }
 }
 
-async function submitCode(context: vscode.ExtensionContext, treeProvider: PtLpoTreeProvider) {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        vscode.window.showErrorMessage('No active editor found!');
+async function submitCode(context: vscode.ExtensionContext, treeProvider: PtLpoTreeProvider, problemIdFromWebview?: number) {
+    let editor = vscode.window.activeTextEditor;
+    let code: string | undefined;
+    let problemId: number | undefined = problemIdFromWebview;
+
+    if (!editor && problemIdFromWebview) {
+        // Fallback: try to find the solution file in workspace if Webview is focused
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders) {
+            const pyPath = path.join(workspaceFolders[0].uri.fsPath, `Solution_${problemIdFromWebview}.py`);
+            if (fs.existsSync(pyPath)) {
+                const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(pyPath));
+                code = doc.getText();
+                await doc.save();
+            }
+        }
+    } else if (editor) {
+        if (editor.document.languageId !== 'python') {
+            vscode.window.showErrorMessage('Only Python code can be submitted!');
+            return;
+        }
+        code = editor.document.getText();
+        const fileName = path.basename(editor.document.uri.fsPath);
+        const match = fileName.match(/Solution_(\d+)\.py/);
+        if (match && !problemId) {
+            problemId = parseInt(match[1], 10);
+        }
+        await editor.document.save();
+    }
+
+    if (!code) {
+        vscode.window.showErrorMessage('No active editor found or could not locate the solution file!');
         return;
     }
 
-    if (editor.document.languageId !== 'python') {
-        vscode.window.showErrorMessage('Only Python code can be submitted!');
-        return;
-    }
-
-    const code = editor.document.getText();
-    const fileName = path.basename(editor.document.uri.fsPath);
-
-    // Auto infer Problem ID from filename Solution_1001.py -> 1001
-    const match = fileName.match(/Solution_(\d+)\.py/);
-    let problemIdStr = match ? match[1] : undefined;
-
-    if (!problemIdStr) {
-        problemIdStr = await vscode.window.showInputBox({
+    if (!problemId) {
+        const idStr = await vscode.window.showInputBox({
             prompt: 'Enter Problem ID to submit against (e.g. 1001)',
             placeHolder: '1001'
         });
+        if (idStr) problemId = parseInt(idStr, 10);
     }
 
-    if (!problemIdStr) return;
-    const problemId = parseInt(problemIdStr, 10);
+    if (!problemId) return;
 
     const token = await context.secrets.get(TOKEN_KEY);
     if (!token) {
         vscode.window.showErrorMessage('You must login first.');
         return;
     }
-
-    // Save document before submitting
-    await editor.document.save();
 
     try {
         const res = await axios.post(`${SERVER_URL}/submissions`,
@@ -211,7 +306,35 @@ function monitorSubmissionSSE(subId: string, token: string, treeProvider: PtLpoT
                     const dataStr = line.slice(6);
                     try {
                         const parsed = JSON.parse(dataStr);
-                        if (parsed.finished || (parsed.Status && parsed.Status !== 'PENDING' && parsed.Status !== 'RUNNING')) {
+                        const isFinished = parsed.finished || (parsed.Status && parsed.Status !== 'PENDING' && parsed.Status !== 'RUNNING');
+
+                        if (ProblemViewPanel.currentPanel) {
+                            let percent = 10;
+                            let text = 'Waiting...';
+                            if (parsed.Status === 'PENDING') { percent = 20; text = 'Queued in server...'; }
+                            else if (parsed.Status === 'RUNNING') { percent = 60; text = 'Running in sandbox...'; }
+
+                            if (isFinished) {
+                                percent = 100;
+                                text = `Finished: ${parsed.Status || 'Done'}. Time: ${parsed.ExecutionTimeMs || 0}ms, Memory: ${parsed.MemoryPeakKb || 0}KB`;
+                                ProblemViewPanel.currentPanel.postMessage({
+                                    type: 'progress',
+                                    state: 'finished',
+                                    percent,
+                                    text,
+                                    success: parsed.Status === 'AC'
+                                });
+                            } else {
+                                ProblemViewPanel.currentPanel.postMessage({
+                                    type: 'progress',
+                                    state: 'running',
+                                    percent,
+                                    text
+                                });
+                            }
+                        }
+
+                        if (isFinished) {
                             // Hit terminal state!
                             const msg = `Judge Finished: ${parsed.Status || 'Done'}. Time: ${parsed.ExecutionTimeMs}ms. Memory: ${parsed.MemoryPeakKb}KB`;
                             vscode.window.showInformationMessage(msg, { modal: true });
