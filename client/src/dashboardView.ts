@@ -184,12 +184,12 @@ export class DashboardViewPanel {
             </style>
         </head>
         <body>
-            <div class="banner">
-                <div class="banner-text">
-                    <h2>Daily Challenge: Two Sum</h2>
-                    <p>Level: Easy • Solve it to earn 10 points!</p>
-                </div>
-                <button class="btn-small" style="padding: 10px 20px; font-size: 14px; font-weight: bold;">Go Solve</button>
+            <div class="onboarding">
+                <h3>New here? 💡 新人指导</h3>
+                <p>欢迎使用 PtLPOJ！快速上手步骤：</p>
+                <p>1. 从左侧侧边栏选择一道题目。</p>
+                <p>2. 在编辑器中编写您的 Python 解法。</p>
+                <p>3. 使用代码顶部的 <b>CodeLens</b> (Run Test/Submit) 快速获取反馈！</p>
             </div>
 
             <div class="grid">
@@ -226,15 +226,6 @@ export class DashboardViewPanel {
                     ${recentRows}
                 </tbody>
             </table>
-
-            <div class="onboarding">
-                <h3>New here? 💡</h3>
-                <p>Welcome to PtLPOJ! To get started:
-                   1. Select a problem from the left sidebar.
-                   2. Write your solution in the Python editor.
-                   3. Use <b>CodeLens</b> (Run Test/Submit) at the top of your file for quick feedback!
-                </p>
-            </div>
 
             <script>
                 const vscode = acquireVsCodeApi();
