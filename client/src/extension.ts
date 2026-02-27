@@ -83,10 +83,22 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         if (targetUri) {
-            await vscode.workspace.openTextDocument(targetUri).then(doc => doc.save());
+            const doc = await vscode.workspace.openTextDocument(targetUri);
+            await doc.save();
+            const text = doc.getText();
             const isWin = process.platform === 'win32';
-            // PowerShell fix: use semicolon or just pick one. For simplicity and win typicality:
-            const cmd = isWin ? `python "${targetUri.fsPath}"` : `python3 "${targetUri.fsPath}" || python "${targetUri.fsPath}"`;
+
+            let cmd = '';
+            const pythonCmd = isWin ? 'python' : 'python3';
+
+            // Check for doctest
+            if (text.includes('doctest.testmod') || text.includes('import doctest')) {
+                cmd = `${pythonCmd} -m doctest -v "${targetUri.fsPath}"`;
+                vscode.window.showInformationMessage('PtLPOJ: Detected doctest. Running in doctest mode.');
+            } else {
+                cmd = isWin ? `python "${targetUri.fsPath}"` : `python3 "${targetUri.fsPath}" || python "${targetUri.fsPath}"`;
+            }
+
             terminal.sendText(cmd);
         } else {
             vscode.window.showErrorMessage('No file found to run test! Please open your solution file.');
@@ -126,7 +138,43 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    context.subscriptions.push(loginCommand, refreshCommand, openProblemCommand, openDashboardCommand, submitCommand, runTestCommand, setFilterSortCommand);
+    // Command: Diff Submission
+    const diffSubmissionCommand = vscode.commands.registerCommand('ptlpoj.diffSubmission', async (problemId: number, historicalCode: string) => {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) return;
+
+        const pyPath = path.join(workspaceFolders[0].uri.fsPath, `Solution_${problemId}.py`);
+        if (!fs.existsSync(pyPath)) {
+            vscode.window.showErrorMessage(`Local solution file for problem ${problemId} not found.`);
+            return;
+        }
+
+        const localUri = vscode.Uri.file(pyPath);
+        // Create a virtual document for the historical code
+        const historicalUri = vscode.Uri.parse(`ptlpoj-historical:Problem_${problemId}_History.py`);
+
+        // We need a ContentProvider for virtual docs, but simpler: use a temp file
+        const tempDir = path.join(context.extensionPath, 'temp');
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+        const tempPath = path.join(tempDir, `History_${problemId}.py`);
+        fs.writeFileSync(tempPath, historicalCode);
+        const tempUri = vscode.Uri.file(tempPath);
+
+        await vscode.commands.executeCommand('vscode.diff', tempUri, localUri, `Problem ${problemId}: History vs Current`);
+    });
+
+    // Command: Search Problems
+    const searchProblemsCommand = vscode.commands.registerCommand('ptlpoj.searchProblems', async () => {
+        const query = await vscode.window.showInputBox({
+            prompt: 'Search problems by ID or Title',
+            placeHolder: 'e.g. 1001 or Two Sum',
+        });
+        if (query !== undefined) {
+            treeProvider.setSearchQuery(query);
+        }
+    });
+
+    context.subscriptions.push(loginCommand, refreshCommand, openProblemCommand, openDashboardCommand, submitCommand, runTestCommand, setFilterSortCommand, diffSubmissionCommand, searchProblemsCommand);
 }
 
 async function handleLogin(context: vscode.ExtensionContext) {

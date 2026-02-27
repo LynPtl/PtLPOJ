@@ -50,6 +50,11 @@
         "command": "ptlpoj.setFilterSort",
         "title": "PtLPOJ: Filter & Sort Problems",
         "icon": "$(filter)"
+      },
+      {
+        "command": "ptlpoj.searchProblems",
+        "title": "PtLPOJ: Search Problems",
+        "icon": "$(search)"
       }
     ],
     "menus": {
@@ -66,6 +71,11 @@
         },
         {
           "command": "ptlpoj.setFilterSort",
+          "when": "view == ptlpoj.problemsView",
+          "group": "navigation"
+        },
+        {
+          "command": "ptlpoj.searchProblems",
           "when": "view == ptlpoj.problemsView",
           "group": "navigation"
         }

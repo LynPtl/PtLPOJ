@@ -19,6 +19,7 @@ export class PtLpoTreeProvider implements vscode.TreeDataProvider<ProblemNode> {
 
     private filterStatus: string = 'ALL';
     private filterTag: string = 'ALL';
+    private searchQuery: string = '';
     private sortBy: 'id' | 'status' | 'difficulty' = 'id';
 
     constructor(private context: vscode.ExtensionContext) { }
@@ -48,6 +49,11 @@ export class PtLpoTreeProvider implements vscode.TreeDataProvider<ProblemNode> {
         this.filterStatus = status;
         this.filterTag = tag;
         this.sortBy = sort;
+        this.refresh();
+    }
+
+    setSearchQuery(query: string) {
+        this.searchQuery = query.toLowerCase();
         this.refresh();
     }
 
@@ -85,6 +91,14 @@ export class PtLpoTreeProvider implements vscode.TreeDataProvider<ProblemNode> {
             // 2. Filter by Tag
             if (this.filterTag !== 'ALL') {
                 problems = problems.filter((p: any) => p.tags && p.tags.includes(this.filterTag));
+            }
+
+            // 2b. Filter by Search Query
+            if (this.searchQuery) {
+                problems = problems.filter((p: any) =>
+                    p.title.toLowerCase().includes(this.searchQuery) ||
+                    p.id.toString().includes(this.searchQuery)
+                );
             }
 
             // 3. Sort
