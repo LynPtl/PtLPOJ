@@ -55,6 +55,10 @@
         "command": "ptlpoj.searchProblems",
         "title": "PtLPOJ: Search Problems",
         "icon": "$(search)"
+      },
+      {
+        "command": "ptlpoj.logout",
+        "title": "PtLPOJ: Logout"
       }
     ],
     "menus": {

@@ -48,6 +48,14 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.executeCommand('ptlpoj.openDashboard');
     });
 
+    // Command: Logout
+    const logoutCommand = vscode.commands.registerCommand('ptlpoj.logout', async () => {
+        await context.secrets.delete(TOKEN_KEY);
+        updateStatusBar(context);
+        treeProvider.refresh();
+        vscode.window.showInformationMessage('Successfully logged out of PtLPOJ.');
+    });
+
     // Command: Refresh Problems
     const refreshCommand = vscode.commands.registerCommand('ptlpoj.refreshProblems', () => {
         treeProvider.refresh();
@@ -186,8 +194,23 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // Command: Auth Options QuickPick
+    const authOptionsCommand = vscode.commands.registerCommand('ptlpoj.authOptions', async () => {
+        const choice = await vscode.window.showQuickPick(['Re-login (OTP)', 'Logout'], {
+            placeHolder: 'You are currently logged in to PtLPOJ'
+        });
+
+        if (choice === 'Re-login (OTP)') {
+            vscode.commands.executeCommand('ptlpoj.login');
+        } else if (choice === 'Logout') {
+            vscode.commands.executeCommand('ptlpoj.logout');
+        }
+    });
+
     context.subscriptions.push(
         loginCommand,
+        logoutCommand,
+        authOptionsCommand,
         completeLoginCommand,
         refreshCommand,
         openProblemCommand,
@@ -429,10 +452,12 @@ async function updateStatusBar(context: vscode.ExtensionContext) {
     const token = await context.secrets.get(TOKEN_KEY);
     if (token) {
         statusBarItem.text = `$(check) PtLPOJ: Logged In`;
-        statusBarItem.tooltip = 'Click to re-login';
+        statusBarItem.tooltip = 'Click for Auth Options';
+        statusBarItem.command = 'ptlpoj.authOptions';
     } else {
-        statusBarItem.text = `$(x) PtLPOJ: Offline`;
+        statusBarItem.text = `$(sign-in) PtLPOJ: Offline`;
         statusBarItem.tooltip = 'Click to log in via OTP';
+        statusBarItem.command = 'ptlpoj.login';
     }
     statusBarItem.show();
 }
