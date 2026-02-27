@@ -62,11 +62,9 @@ PtLPOJ/
 ### 👉 对于想要了解系统设计的开发者
 *   [系统架构白皮书 (Architecture Design)](docs/architecture_design.md) - 详细讲解多层组件图、鉴权流与沙盒安全限制原理。
 
-### 👉 对于想要部署服务端的运维/教师
-*   [部署与运维指南 (Deployment Guide)](docs/deployment_guide.md) - 涵盖 Docker 与 Go 环境拉取、服务器运行、端口配置及 SQLite 数据备份。
-
-### 👉 对于最终刷题的学生/使用者
-*   [用户操作手册 (User Manual)](docs/user_manual.md) - 从插件绑定、OTP 登录到一键 `Ctrl+Alt+S` 提交流程的完整图文引导。
+### 👉 对于运维、教师及普通使用者
+*   [全量部署与快速使用指南 (Full Guide)](docs/PtLPOJ_Full_Guide_ZH.md) - **推荐阅读**。涵盖后端 Docker 部署、插件 VSIX 安装以及如何通过 VS Code 设置连接自定义服务器。
+*   [用户操作手册 (User Manual)](docs/user_manual.md) - 针对学生的纯使用流程指引。
 
 ---
 
@@ -74,10 +72,7 @@ PtLPOJ/
 
 我们遵循透明的里程碑计划推进功能（详情请参阅项目内的独立 mission 文档）：
 
-*   [x] **Phase 1-6**: 核心骨架（鉴权、沙盒评测、数据通信、基础插件端对接）
-*   [x] **Phase 9**: 系统全面文档化 (Architecture & User Manuals)
-*   [ ] **Phase 7 (Next)**: UI/UX 极致体验升级 (CodeLens 左侧边距按键、动态 Dashboards) -> 参阅 `docs/dev/mission_UIUX.md`
-*   [ ] **Phase 8**: 教师端 API 及动态题目分类检索拓展 -> 参阅 `docs/dev/mission_apis.md`
+*   [x] **Phase 10-11**: 登录/退出 UX 闭环与 GitHub CI 自动化分发，支持自定义 Server URL。
 
 ## 🛠️ 技术栈速览
 

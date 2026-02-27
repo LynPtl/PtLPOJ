@@ -9,8 +9,11 @@ import { DashboardViewPanel } from './dashboardView';
 import { LoginViewPanel } from './loginView';
 import * as http from 'http';
 
-const SERVER_URL = 'http://localhost:8080/api';
 const TOKEN_KEY = 'ptlpoj_jwt_token';
+
+function getServerUrl(): string {
+    return vscode.workspace.getConfiguration('ptlpoj').get<string>('serverUrl') || 'http://localhost:8080/api';
+}
 
 let statusBarItem: vscode.StatusBarItem;
 
@@ -73,7 +76,7 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.showErrorMessage('Please login first to view dashboard.');
             return;
         }
-        DashboardViewPanel.createOrShow(context.extensionUri, SERVER_URL, token);
+        DashboardViewPanel.createOrShow(context.extensionUri, getServerUrl(), token);
     });
 
     // Command: Submit Code
@@ -236,7 +239,7 @@ async function handleLogin(context: vscode.ExtensionContext) {
     }
 
     try {
-        await axios.post(`${SERVER_URL}/auth/login`, { email });
+        await axios.post(`${getServerUrl()}/auth/login`, { email });
         vscode.window.showInformationMessage(`OTP requested. Check your email/console for ${email}`);
 
         const code = await vscode.window.showInputBox({
@@ -248,7 +251,7 @@ async function handleLogin(context: vscode.ExtensionContext) {
             return;
         }
 
-        const res = await axios.post(`${SERVER_URL}/auth/verify`, { email, code });
+        const res = await axios.post(`${getServerUrl()}/auth/verify`, { email, code });
         const token = res.data.token;
 
         // Securely store token
@@ -280,7 +283,7 @@ async function openProblem(context: vscode.ExtensionContext, node: ProblemNode) 
     const currentFolder = workspaceFolders[0].uri.fsPath;
 
     try {
-        const res = await axios.get(`${SERVER_URL}/problems/${node.problemId}`, {
+        const res = await axios.get(`${getServerUrl()}/problems/${node.problemId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -361,7 +364,7 @@ async function submitCode(context: vscode.ExtensionContext, treeProvider: PtLpoT
     }
 
     try {
-        const res = await axios.post(`${SERVER_URL}/submissions`,
+        const res = await axios.post(`${getServerUrl()}/submissions`,
             { problem_id: problemId, source_code: code },
             { headers: { 'Authorization': `Bearer ${token}` } }
         );
@@ -379,10 +382,11 @@ async function submitCode(context: vscode.ExtensionContext, treeProvider: PtLpoT
 }
 
 function monitorSubmissionSSE(subId: string, token: string, treeProvider: PtLpoTreeProvider) {
+    const url = new URL(getServerUrl());
     const options = {
-        hostname: 'localhost',
-        port: 8080,
-        path: `/api/submissions/${subId}/stream`,
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: `${url.pathname}/submissions/${subId}/stream`,
         headers: {
             'Authorization': `Bearer ${token}`,
             'Accept': 'text/event-stream'

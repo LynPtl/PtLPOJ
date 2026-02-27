@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 
-const SERVER_URL = 'http://localhost:8080/api';
+function getServerUrl(): string {
+    return vscode.workspace.getConfiguration('ptlpoj').get<string>('serverUrl') || 'http://localhost:8080/api';
+}
 
 export class Problem {
     constructor(
@@ -32,7 +34,7 @@ export class PtLpoTreeProvider implements vscode.TreeDataProvider<ProblemNode> {
         const token = await this.context.secrets.get('ptlpoj_jwt_token');
         if (!token) return [];
         try {
-            const res = await axios.get(`${SERVER_URL}/problems`, {
+            const res = await axios.get(`${getServerUrl()}/problems`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const tags = new Set<string>();
@@ -82,7 +84,7 @@ export class PtLpoTreeProvider implements vscode.TreeDataProvider<ProblemNode> {
         }
 
         try {
-            const res = await axios.get(`${SERVER_URL}/problems`, {
+            const res = await axios.get(`${getServerUrl()}/problems`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 

@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 
-const SERVER_URL = 'http://localhost:8080/api';
+function getServerUrl(): string {
+    return vscode.workspace.getConfiguration('ptlpoj').get<string>('serverUrl') || 'http://localhost:8080/api';
+}
 
 export class LoginViewPanel {
     public static currentPanel: LoginViewPanel | undefined;
@@ -67,7 +69,7 @@ export class LoginViewPanel {
 
     private async _handleRequestOtp(email: string) {
         try {
-            await axios.post(`${SERVER_URL}/auth/login`, { email });
+            await axios.post(`${getServerUrl()}/auth/login`, { email });
             this._panel.webview.postMessage({ type: 'otpSent', email });
         } catch (err: any) {
             this._panel.webview.postMessage({ type: 'error', message: err.response?.data?.error || err.message });
@@ -76,7 +78,7 @@ export class LoginViewPanel {
 
     private async _handleVerifyOtp(email: string, otp: string) {
         try {
-            const res = await axios.post(`${SERVER_URL}/auth/verify`, { email, code: otp });
+            const res = await axios.post(`${getServerUrl()}/auth/verify`, { email, code: otp });
             const token = res.data.token;
 
             // Emit success to extension to store token
