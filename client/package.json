@@ -3,7 +3,7 @@
   "publisher": "ptlpoj",
   "displayName": "PtLPOJ Local Judge",
   "description": "Inner Team Python Online Judge Client",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/LynPtl/PtLPOJ.git"
@@ -64,6 +64,10 @@
         "command": "ptlpoj.setConfig",
         "title": "PtLPOJ: Set Server URL",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "ptlpoj.openAdminPanel",
+        "title": "PtLPOJ: Open Admin Panel"
       }
     ],
     "menus": {
@@ -147,6 +151,7 @@
   },
   "dependencies": {
     "axios": "^1.6.0",
+    "form-data": "^4.0.5",
     "katex": "^0.16.33",
     "markdown-it": "^14.1.1",
     "markdown-it-katex": "^2.0.3"

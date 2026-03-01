@@ -7,6 +7,7 @@ import { PtLpoCodeLensProvider } from './codeLensProvider';
 import { ProblemViewPanel } from './problemView';
 import { DashboardViewPanel } from './dashboardView';
 import { LoginViewPanel } from './loginView';
+import { AdminViewPanel } from './adminView';
 import * as http from 'http';
 
 const TOKEN_KEY = 'ptlpoj_jwt_token';
@@ -231,6 +232,24 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    const ADMIN_TOKEN_KEY = 'ptlpoj_admin_token';
+    const openAdminPanelCommand = vscode.commands.registerCommand('ptlpoj.openAdminPanel', async () => {
+        let adminToken = await context.secrets.get(ADMIN_TOKEN_KEY);
+        if (!adminToken) {
+            adminToken = await vscode.window.showInputBox({
+                prompt: 'Enter Admin Token to access Control Panel',
+                password: true,
+                ignoreFocusOut: true
+            });
+            if (adminToken) {
+                await context.secrets.store(ADMIN_TOKEN_KEY, adminToken);
+            } else {
+                return; // User cancelled
+            }
+        }
+        AdminViewPanel.createOrShow(context.extensionUri, context);
+    });
+
     context.subscriptions.push(
         loginCommand,
         logoutCommand,
@@ -244,7 +263,8 @@ export function activate(context: vscode.ExtensionContext) {
         runTestCommand,
         setFilterSortCommand,
         diffSubmissionCommand,
-        searchProblemsCommand
+        searchProblemsCommand,
+        openAdminPanelCommand
     );
 }
 
