@@ -117,8 +117,12 @@ export function activate(context: vscode.ExtensionContext) {
             // Check for doctest
             if (text.includes('doctest.testmod') || text.includes('import doctest')) {
                 cmd = `${pythonCmd} -m doctest -v "${targetUri.fsPath}"`;
-                vscode.window.showInformationMessage('PtLPOJ: Detected doctest. Running in doctest mode.');
+                vscode.window.showInformationMessage('💡 PtLPOJ: 已检测到 doctest，正在以 verbose 模式运行测试。');
             } else {
+                // Check if there are any obvious test calls
+                if (!text.includes('print(') && !text.includes('assert ') && !text.includes('unittest') && !text.includes('pytest')) {
+                    vscode.window.showInformationMessage('💡 提示: 您的代码中似乎没有测试调用。您可以尝试在文件末尾添加 `print(solution(...))` 或者使用 `doctest` 来查看本地输出。');
+                }
                 cmd = isWin ? `python "${targetUri.fsPath}"` : `python3 "${targetUri.fsPath}" || python "${targetUri.fsPath}"`;
             }
 
