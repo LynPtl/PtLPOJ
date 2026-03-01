@@ -32,15 +32,15 @@ export class AdminViewPanel {
             }
         );
 
-        let token = await context.secrets.get('ptlpoj_admin_token') || '';
-        AdminViewPanel.currentPanel = new AdminViewPanel(panel, extensionUri, context, token);
+        let adminToken = await context.secrets.get('ptlpoj_admin_token') || '';
+        AdminViewPanel.currentPanel = new AdminViewPanel(panel, extensionUri, context, adminToken);
     }
 
-    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, context: vscode.ExtensionContext, token: string) {
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, context: vscode.ExtensionContext, adminToken: string) {
         this._panel = panel;
         this._extensionUri = extensionUri;
         this._context = context;
-        this._adminToken = token;
+        this._adminToken = adminToken;
 
         this._update();
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -54,8 +54,27 @@ export class AdminViewPanel {
                     case 'addUser':
                         await this._handleAddUser(message.emailInput);
                         return;
-                    case 'deleteUser':
-                        await this._handleDeleteUser(message.email);
+                    case 'askDeleteUsers':
+                        vscode.window.showWarningMessage(`Are you sure you want to permanently remove these users?`, { modal: true }, 'Yes').then(async res => {
+                            if (res === 'Yes') {
+                                await this._handleDeleteUsers(message.emailInput);
+                                this._panel.webview.postMessage({ type: 'clearEmailInput' });
+                            }
+                        });
+                        return;
+                    case 'askRemoveSingleUser':
+                        vscode.window.showWarningMessage(`Are you sure you want to remove ${message.email}?`, { modal: true }, 'Yes').then(async res => {
+                            if (res === 'Yes') {
+                                await this._handleRemoveSingleUser(message.email);
+                            }
+                        });
+                        return;
+                    case 'askResetToken':
+                        vscode.window.showWarningMessage('Are you sure you want to clear your local Admin Token? You will need to re-enter it.', { modal: true }, 'Yes').then(res => {
+                            if (res === 'Yes') {
+                                vscode.commands.executeCommand('ptlpoj.resetAdminToken');
+                            }
+                        });
                         return;
                     case 'selectAndUploadProblems':
                         await this._handleSelectAndUploadProblems();
@@ -69,12 +88,31 @@ export class AdminViewPanel {
 
     private async _handleFetchUsers() {
         try {
+            const currentUserToken = await this._context.secrets.get('ptlpoj_jwt_token') || '';
             const res = await axios.get(`${getServerUrl()}/admin/users`, {
-                headers: { 'Authorization': `Bearer ${this._adminToken}` }
+                headers: {
+                    'Authorization': `Bearer ${currentUserToken}`,
+                    'X-Admin-Token': this._adminToken
+                }
             });
             this._panel.webview.postMessage({ type: 'usersData', data: res.data });
         } catch (error: any) {
-            vscode.window.showErrorMessage(`Fetch Users Failed: ${error.response?.data?.error || error.message}`);
+            const errorMsg = error.response?.data?.error;
+            if (error.response?.status === 401) {
+                if (errorMsg === 'Invalid Admin Environment Token') {
+                    vscode.window.showErrorMessage(`Authentication Failed: Invalid Admin Token.`, 'Reset Admin Token').then(res => {
+                        if (res === 'Reset Admin Token') vscode.commands.executeCommand('ptlpoj.resetAdminToken');
+                    });
+                } else {
+                    vscode.window.showErrorMessage(`Authentication Failed: User Session Invalid (${errorMsg}). Please Login to your account first.`, 'Login').then(res => {
+                        if (res === 'Login') vscode.commands.executeCommand('ptlpoj.login');
+                    });
+                }
+            } else if (error.response?.status === 403) {
+                vscode.window.showErrorMessage(`Permission Denied: Your account role is not ADMIN.`);
+            } else {
+                vscode.window.showErrorMessage(`Fetch Users Failed: ${errorMsg || error.message}`);
+            }
         }
     }
 
@@ -94,13 +132,32 @@ export class AdminViewPanel {
             for (let i = 0; i < total; i++) {
                 progress.report({ message: `Processing ${i + 1}/${total}: ${emails[i]}` });
                 try {
+                    const currentUserToken = await this._context.secrets.get('ptlpoj_jwt_token') || '';
                     await axios.post(`${getServerUrl()}/admin/users`, { email: emails[i] }, {
-                        headers: { 'Authorization': `Bearer ${this._adminToken}` }
+                        headers: {
+                            'Authorization': `Bearer ${currentUserToken}`,
+                            'X-Admin-Token': this._adminToken
+                        }
                     });
                     successCount++;
                 } catch (error: any) {
-                    console.error(`Failed to add user ${emails[i]}:`, error.response?.data?.error || error.message);
+                    const failReason = error.response?.data?.error || error.message;
+                    console.error(`Failed to add user ${emails[i]}:`, failReason);
                     failCount++;
+                    if (error.response?.status === 401 && failReason === 'Invalid Admin Environment Token') {
+                        vscode.window.showErrorMessage(`Invalid Admin Token.`, 'Reset Admin Token').then(res => {
+                            if (res === 'Reset Admin Token') vscode.commands.executeCommand('ptlpoj.resetAdminToken');
+                        });
+                        // Do not return here, continue processing other emails
+                    } else if (error.response?.status === 401) {
+                        vscode.window.showErrorMessage(`Session Invalid (${failReason}). Please Login first.`, 'Login').then(res => {
+                            if (res === 'Login') vscode.commands.executeCommand('ptlpoj.login');
+                        });
+                        // Do not return here, continue processing other emails
+                    } else if (error.response?.status === 403) {
+                        vscode.window.showErrorMessage(`Permission Denied: You are not an ADMIN.`);
+                        // Do not return here, continue processing other emails
+                    }
                 }
             }
         });
@@ -114,10 +171,69 @@ export class AdminViewPanel {
         this._handleFetchUsers();
     }
 
-    private async _handleDeleteUser(email: string) {
+    private async _handleDeleteUsers(emailInput: string) {
+        const emails = emailInput.split(/[,;\n ]+/).map(e => e.trim()).filter(e => e.length > 0);
+        if (emails.length === 0) return;
+
+        let successCount = 0;
+        let failCount = 0;
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Removing Users from Whitelist",
+            cancellable: false
+        }, async (progress) => {
+            const total = emails.length;
+            for (let i = 0; i < total; i++) {
+                progress.report({ message: `Processing ${i + 1}/${total}: ${emails[i]}` });
+                try {
+                    const currentUserToken = await this._context.secrets.get('ptlpoj_jwt_token') || '';
+                    await axios.delete(`${getServerUrl()}/admin/users?email=${encodeURIComponent(emails[i])}`, {
+                        headers: {
+                            'Authorization': `Bearer ${currentUserToken}`,
+                            'X-Admin-Token': this._adminToken
+                        }
+                    });
+                    successCount++;
+                } catch (error: any) {
+                    const failReason = error.response?.data?.error || error.message;
+                    console.error(`Failed to remove user ${emails[i]}:`, failReason);
+                    failCount++;
+                    if (error.response?.status === 401 && failReason === 'Invalid Admin Environment Token') {
+                        vscode.window.showErrorMessage(`Invalid Admin Token.`, 'Reset Admin Token').then(res => {
+                            if (res === 'Reset Admin Token') vscode.commands.executeCommand('ptlpoj.resetAdminToken');
+                        });
+                        // Do not return here, continue processing other emails
+                    } else if (error.response?.status === 401) {
+                        vscode.window.showErrorMessage(`Session Invalid (${failReason}). Please Login first.`, 'Login').then(res => {
+                            if (res === 'Login') vscode.commands.executeCommand('ptlpoj.login');
+                        });
+                        // Do not return here, continue processing other emails
+                    } else if (error.response?.status === 403) {
+                        vscode.window.showErrorMessage(`Permission Denied: You are not an ADMIN.`);
+                        // Do not return here, continue processing other emails
+                    }
+                }
+            }
+        });
+
+        if (failCount === 0) {
+            vscode.window.showInformationMessage(`Successfully removed all ${successCount} user(s) from whitelist!`);
+        } else {
+            vscode.window.showWarningMessage(`Removed ${successCount} user(s), but ${failCount} failed. They may not exist.`);
+        }
+
+        this._handleFetchUsers();
+    }
+
+    private async _handleRemoveSingleUser(email: string) {
         try {
+            const currentUserToken = await this._context.secrets.get('ptlpoj_jwt_token') || '';
             await axios.delete(`${getServerUrl()}/admin/users?email=${encodeURIComponent(email)}`, {
-                headers: { 'Authorization': `Bearer ${this._adminToken}` }
+                headers: {
+                    'Authorization': `Bearer ${currentUserToken}`,
+                    'X-Admin-Token': this._adminToken
+                }
             });
             vscode.window.showInformationMessage(`User ${email} removed.`);
             this._handleFetchUsers();
@@ -146,6 +262,7 @@ export class AdminViewPanel {
             title: "Uploading Problems",
             cancellable: false
         }, async (progress) => {
+            const currentUserToken = await this._context.secrets.get('ptlpoj_jwt_token') || '';
             const total = uris.length;
             for (let i = 0; i < total; i++) {
                 const fsPath = uris[i].fsPath;
@@ -159,7 +276,8 @@ export class AdminViewPanel {
                     const res = await axios.post(`${getServerUrl()}/admin/problems`, formData, {
                         headers: {
                             ...formData.getHeaders(),
-                            'Authorization': `Bearer ${this._adminToken}`
+                            'Authorization': `Bearer ${currentUserToken}`,
+                            'X-Admin-Token': this._adminToken
                         }
                     });
                     successCount++;
@@ -217,10 +335,13 @@ export class AdminViewPanel {
                     th { font-weight: bold; color: var(--vscode-editor-foreground); opacity: 0.8; }
                     
                     /* Forms & Buttons */
-                    input[type="text"], input[type="file"] { width: 100%; padding: 8px; margin: 8px 0; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; }
+                    textarea { width: 100%; padding: 8px; margin: 8px 0; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; resize: vertical; min-height: 80px; font-family: var(--vscode-editor-font-family); }
                     button.primary { background-color: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; margin-top: 10px; }
                     button.primary:hover { background-color: var(--vscode-button-hoverBackground); }
+                    button.secondary { background-color: transparent; color: var(--vscode-button-background); border: 1px solid var(--vscode-button-background); padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; margin-top: 10px; }
+                    button.secondary:hover { background-color: var(--vscode-button-hoverBackground); color: var(--vscode-button-foreground); }
                     button.danger { background-color: var(--vscode-errorForeground); color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 3px; font-size: 12px; }
+                    button.danger:hover { opacity: 0.8; }
                     button.danger:hover { opacity: 0.8; }
                     
                     .card { background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 10px; }
@@ -228,7 +349,10 @@ export class AdminViewPanel {
                 </style>
             </head>
             <body>
-                <h2>👑 PtLPOJ Admin Control Panel</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>👑 PtLPOJ Admin Control Panel</h2>
+                    <button class="secondary" style="margin-top: 0; font-size: 11px; padding: 5px 10px;" onclick="resetAdminToken()">🔄 Reset Admin Token</button>
+                </div>
                 
                 <div class="tab">
                   <button class="tablinks active" onclick="openTab(event, 'Whitelist')">👥 Whitelist Manager</button>
@@ -237,10 +361,13 @@ export class AdminViewPanel {
 
                 <div id="Whitelist" class="tabcontent" style="display:block;">
                     <div class="card">
-                        <h3>Add New User</h3>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="text" id="newEmail" placeholder="student@example.com" style="flex: 1;" />
-                            <button class="primary" style="margin-top: 0;" onclick="addUser()">Add to Whitelist</button>
+                        <h3>Manage Users</h3>
+                        <p style="opacity: 0.8; font-size: 13px;">Supports bulk operations: enter multiple emails separated by commas, spaces, or newlines (e.g. copy-pasted from Excel column).</p>
+                        <textarea id="emailsInput" placeholder="student1@example.com, student2@edu.cn\nstudent3@gmail.com"></textarea>
+                        
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <button class="primary" onclick="addUsers()">+ Bulk Add to Whitelist</button>
+                            <button class="secondary" onclick="deleteUsers()">- Bulk Delete Users</button>
                         </div>
                     </div>
                     
@@ -296,6 +423,9 @@ export class AdminViewPanel {
 
                     window.addEventListener('message', event => {
                         const message = event.data;
+                        if (message.type === 'clearEmailInput') {
+                            document.getElementById('emailsInput').value = '';
+                        }
                         if (message.type === 'usersData') {
                             const tbody = document.getElementById('usersTableBody');
                             tbody.innerHTML = '';
@@ -308,26 +438,36 @@ export class AdminViewPanel {
                                 tr.innerHTML = \`
                                     <td>\${user.email}</td>
                                     <td><span style="background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); padding: 2px 6px; border-radius: 10px; font-size: 11px;">\${user.role}</span></td>
-                                    <td><button class="danger" onclick="deleteUser('\${user.email}')">Remove</button></td>
+                                    <td><button class="danger" onclick="removeSingleUser('\${user.email}')">Remove</button></td>
                                 \`;
                                 tbody.appendChild(tr);
                             });
                         }
                     });
 
-                    function addUser() {
-                        const emailInput = document.getElementById('newEmail');
-                        const email = emailInput.value.trim();
-                        if (email) {
-                            vscode.postMessage({ type: 'addUser', emailInput: email });
+                    function addUsers() {
+                        const emailInput = document.getElementById('emailsInput');
+                        const emails = emailInput.value.trim();
+                        if (emails) {
+                            vscode.postMessage({ type: 'addUser', emailInput: emails });
                             emailInput.value = '';
                         }
                     }
 
-                    function deleteUser(email) {
-                        if (confirm('Are you sure you want to remove ' + email + '?')) {
-                            vscode.postMessage({ type: 'deleteUser', email });
+                    function deleteUsers() {
+                        const emailInput = document.getElementById('emailsInput');
+                        const emails = emailInput.value.trim();
+                        if (emails) {
+                            vscode.postMessage({ type: 'askDeleteUsers', emailInput: emails });
                         }
+                    }
+
+                    function removeSingleUser(email) {
+                        vscode.postMessage({ type: 'askRemoveSingleUser', email });
+                    }
+
+                    function resetAdminToken() {
+                        vscode.postMessage({ type: 'askResetToken' });
                     }
 
                     function uploadProblem() {

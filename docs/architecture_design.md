@@ -54,8 +54,12 @@ graph TD
     Gateway ---> | Read/Write | SQLite
     Gateway ---> | Read | FileSystem
     Gateway ---> | Push | JobQueue
+    Gateway -.-> | Admin Uploads | ASTParser
 
     JobQueue ---> Scheduler
+    ASTParser(AST Py Parser) ---> | Write Scripts/Md | FileSystem
+    ASTParser ---> | Store Meta | SQLite
+
     Scheduler ---> | Create/Start/Stop | DockerEngine
     Scheduler ---> | Stream Logs | DockerEngine
     Scheduler ---> | Update State | SQLite
@@ -100,6 +104,15 @@ graph TD
 * **关系数据**：采用 `SQLite` 单体数据库。利用 `GORM` 框架管理 `Users`, `Submissions`, `Problems` 等结构化状态。
     * **并发写优化**：为了避免 Go 协程并发更新判题状态遇到的 `Database is locked` 问题，初始化 DSN 时强制注入 `_journal_mode=WAL`（Write-Ahead Logging）和高容忍阈值的忙等待重试机制 `_busy_timeout=5000`。
 * **非结构化文件**：题目的 Markdown 描述文本以及最为私密的隐藏验证数据（`tests.txt`），以纯文件形式存储在服务端配置目录下（如 `data/problems/1001/`）。这些文件仅在被 Worker 拉起评测时挂载或直接读入内存并注入代码流。
+
+### 2.6 AST 动态解析中台 (AST Parser Engine)
+* **职责**：为了解决传统 OJ 需要维护海量碎散文件（描述文档、测试用例档、代码桩档）的痛点。
+* **实现**：采用轻量级 Python AST API 进行源代码抽象语法树解析。
+* **工作流**：管理员在前端上传标准化的 `.py` 源文件，`Gateway` 接收后即交由 `parse_worker.py` 执行自动化逆向生成策略：
+    1. 提取模块或顶级函数的 `docstring`，流式转换为题面 Markdown 描述。
+    2. 提取内部的 `doctest` 测试断言，格式转换后生成沙盒隐藏测试用例 `tests.txt`。
+    3. 移除函数实现主体并保留方法签名（将内容置换为 `pass` 等占位符），生成下发至学生端运行的代码脚手架。
+    4. 执行数据库插入动作录入系统并提供热刷新。
 
 ---
 

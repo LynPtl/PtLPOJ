@@ -34,6 +34,38 @@ func GetUserByEmail(email string) (*models.User, error) {
 	return &u, nil
 }
 
+// GetUserByID finds a user by their UUID.
+func GetUserByID(id uuid.UUID) (*models.User, error) {
+	var u models.User
+	result := DB.First(&u, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, result.Error
+	}
+	return &u, nil
+}
+
+// GetAllUsers retrieves all registered users (whitelist).
+func GetAllUsers() ([]models.User, error) {
+	var users []models.User
+	result := DB.Order("created_at desc").Find(&users)
+	return users, result.Error
+}
+
+// DeleteUserByEmail permanently removes a user from the whitelist by email.
+func DeleteUserByEmail(email string) error {
+	result := DB.Where("email = ?", email).Delete(&models.User{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("user not found")
+	}
+	return nil
+}
+
 // CreateSubmission records a new user code submission.
 func CreateSubmission(userID uuid.UUID, problemID int, code string) (*models.Submission, error) {
 	s := &models.Submission{

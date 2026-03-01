@@ -84,6 +84,14 @@ func SetupRouter() *http.ServeMux {
 	mux.Handle("/api/submissions/", middleware.RequireAuth(protectedMux))
 	mux.Handle("/api/user/stats", middleware.RequireAuth(protectedMux))
 
+	// Admin API Protected Endpoints
+	adminMux := http.NewServeMux()
+	adminMux.HandleFunc("/api/admin/users", handlers.AdminUsersHandler)
+	adminMux.HandleFunc("/api/admin/problems", handlers.AdminProblemsHandler)
+
+	// Simply pass adminMux, don't strip prefix, because handlers expect the full path
+	mux.Handle("/api/admin/", middleware.RequireAdminToken(adminMux))
+
 	log.Println("API Router configured successfully")
 	return mux
 }

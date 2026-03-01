@@ -250,6 +250,15 @@ export function activate(context: vscode.ExtensionContext) {
         AdminViewPanel.createOrShow(context.extensionUri, context);
     });
 
+    const resetAdminTokenCommand = vscode.commands.registerCommand('ptlpoj.resetAdminToken', async () => {
+        await context.secrets.delete(ADMIN_TOKEN_KEY);
+        if (AdminViewPanel.currentPanel) {
+            AdminViewPanel.currentPanel.dispose();
+        }
+        vscode.window.showInformationMessage('Admin Token Cleared. Please reopen the Admin Panel to re-enter.');
+        vscode.commands.executeCommand('ptlpoj.openAdminPanel');
+    });
+
     context.subscriptions.push(
         loginCommand,
         logoutCommand,
@@ -264,11 +273,12 @@ export function activate(context: vscode.ExtensionContext) {
         setFilterSortCommand,
         diffSubmissionCommand,
         searchProblemsCommand,
-        openAdminPanelCommand
+        openAdminPanelCommand,
+        resetAdminTokenCommand
     );
 }
 
-// handleLogin is now replaced by LoginViewPanel flow, 
+// handleLogin is now replaced by LoginViewPanel flow,
 // leaving it here temporarily if needed for fallback, but it's no longer the default path.
 async function handleLogin(context: vscode.ExtensionContext) {
     const email = await vscode.window.showInputBox({

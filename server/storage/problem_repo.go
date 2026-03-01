@@ -104,3 +104,70 @@ func GetAllProblems() []models.Problem {
 
 	return list
 }
+
+// GetNextProblemID returns the next available Problem ID sequentially
+func GetNextProblemID() int {
+	cacheMutex.RLock()
+	defer cacheMutex.RUnlock()
+
+	maxID := 1000
+	for id := range ProblemCache {
+		if id > maxID {
+			maxID = id
+		}
+	}
+	return maxID + 1
+}
+
+// SaveNewProblem dynamically saves a parsed python file into the system.
+// It creates the necessary dir, writes tests.txt, scaffold.py, problem.md, and updates problems.json.
+func SaveNewProblem(id int, title, scaffold, fullDocstring string, intCaseCount int, funcName string) error {
+	cacheMutex.Lock()
+	defer cacheMutex.Unlock()
+
+	probDir := filepath.Join(DataDirPath, "problems", fmt.Sprintf("%d", id))
+	if err := os.MkdirAll(probDir, os.ModePerm); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(filepath.Join(probDir, "scaffold.py"), []byte(scaffold), 0644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(probDir, "tests.txt"), []byte(fullDocstring), 0644); err != nil {
+		return err
+	}
+
+	mdContent := fmt.Sprintf("# %s\n\n## 题目描述\n\n请实现函数 `%s`。\n\n## 示例框架\n\n```python\n%s\n```\n", title, funcName, scaffold)
+	if err := os.WriteFile(filepath.Join(probDir, "problem.md"), []byte(mdContent), 0644); err != nil {
+		return err
+	}
+
+	newProb := models.Problem{
+		ID:            id,
+		Title:         title,
+		Difficulty:    "Easy",
+		Tags:          []string{"Auto-generated"},
+		TimeLimitMs:   1000,
+		MemoryLimitKb: 65536,
+		CaseCount:     intCaseCount,
+	}
+
+	ProblemCache[id] = newProb
+
+	// Rewrite problems.json
+	var list []models.Problem
+	for _, p := range ProblemCache {
+		list = append(list, p)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].ID < list[j].ID
+	})
+
+	bytes, err := json.MarshalIndent(list, "", "    ")
+	if err != nil {
+		return err
+	}
+
+	jsonPath := filepath.Join(DataDirPath, "problems", "problems.json")
+	return os.WriteFile(jsonPath, bytes, 0644)
+}

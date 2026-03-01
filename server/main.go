@@ -33,10 +33,10 @@ func main() {
 		log.Fatalf("Docker initialization failed: %v", err)
 	}
 
-	// 4. Seed Test User Whitelist
-	seedErr := seedTestUser()
+	// 4. Seed Init Admin User Whitelist
+	seedErr := seedInitAdmin()
 	if seedErr != nil {
-		log.Printf("Note: Test user ptlantern@gmail.com seeding info: %v", seedErr)
+		log.Printf("Note: Initial Admin user seeding info: %v", seedErr)
 	}
 
 	// 5. Start Worker Pool (Scheduler)
@@ -58,16 +58,22 @@ func main() {
 	}
 }
 
-// seedTestUser injects the hardcoded tester into the whitelist if not present
-func seedTestUser() error {
-	user, err := storage.GetUserByEmail("ptlantern@gmail.com")
+// seedInitAdmin injects the admin email from PTLPOJ_INIT_ADMIN_EMAIL into the whitelist if set
+func seedInitAdmin() error {
+	adminEmail := os.Getenv("PTLPOJ_INIT_ADMIN_EMAIL")
+	if adminEmail == "" {
+		log.Println("PTLPOJ_INIT_ADMIN_EMAIL not set, skipping initial admin seeding.")
+		return nil
+	}
+
+	user, err := storage.GetUserByEmail(adminEmail)
 	if err == nil && user != nil {
 		return nil // Already seeded
 	}
-	_, err = storage.CreateUser("ptlantern@gmail.com", models.RoleAdmin)
+	_, err = storage.CreateUser(adminEmail, models.RoleAdmin)
 	if err != nil {
 		return err
 	}
-	log.Println("Test account ptlantern@gmail.com seeded into whitelist.")
+	log.Printf("Initial admin account %s seeded into whitelist.", adminEmail)
 	return nil
 }

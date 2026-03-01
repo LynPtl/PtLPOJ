@@ -97,5 +97,27 @@
         "time_limit_ms": 1000,
         "memory_limit_kb": 65536,
         "case_count": 4
+    },
+    {
+        "id": 1010,
+        "title": "dfs01",
+        "difficulty": "Easy",
+        "tags": [
+            "Auto-generated"
+        ],
+        "time_limit_ms": 1000,
+        "memory_limit_kb": 65536,
+        "case_count": 6
+    },
+    {
+        "id": 1011,
+        "title": "dfs02",
+        "difficulty": "Easy",
+        "tags": [
+            "Auto-generated"
+        ],
+        "time_limit_ms": 1000,
+        "memory_limit_kb": 65536,
+        "case_count": 8
     }
 ]
