@@ -27,3 +27,18 @@ server/server.pid
 server/token.json
 server/e2e_test.py
 server/token_response.json
+
+ptlpoj-server
+ptlpoj-test
+*.db
+*.db-wal
+*.db-shm
+
+
+# Compiled outputs
+*.exe
+*.out
+*.vsix
+*.log
+server/server
+

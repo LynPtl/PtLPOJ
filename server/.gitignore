@@ -1,0 +1,8 @@
+
+# Server build and execution binaries
+ptlpoj-server
+ptlpoj-test
+*.db
+*.db-wal
+*.db-shm
+
