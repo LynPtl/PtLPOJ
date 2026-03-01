@@ -43,7 +43,6 @@ export class AdminViewPanel {
         this._adminToken = token;
 
         this._update();
-
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
         this._panel.webview.onDidReceiveMessage(
@@ -53,13 +52,13 @@ export class AdminViewPanel {
                         await this._handleFetchUsers();
                         return;
                     case 'addUser':
-                        await this._handleAddUser(message.email);
+                        await this._handleAddUser(message.emailInput);
                         return;
                     case 'deleteUser':
                         await this._handleDeleteUser(message.email);
                         return;
-                    case 'uploadProblem':
-                        await this._handleUploadProblem(message.filePath);
+                    case 'selectAndUploadProblems':
+                        await this._handleSelectAndUploadProblems();
                         return;
                 }
             },
@@ -79,16 +78,40 @@ export class AdminViewPanel {
         }
     }
 
-    private async _handleAddUser(email: string) {
-        try {
-            await axios.post(`${getServerUrl()}/admin/users`, { email: email }, {
-                headers: { 'Authorization': `Bearer ${this._adminToken}` }
-            });
-            vscode.window.showInformationMessage(`User ${email} added to whitelist!`);
-            this._handleFetchUsers(); // Refresh
-        } catch (error: any) {
-            vscode.window.showErrorMessage(`Add User Failed: ${error.response?.data?.error || error.message}`);
+    private async _handleAddUser(emailInput: string) {
+        const emails = emailInput.split(/[,;\n ]+/).map(e => e.trim()).filter(e => e.length > 0);
+        if (emails.length === 0) return;
+
+        let successCount = 0;
+        let failCount = 0;
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Adding Users to Whitelist",
+            cancellable: false
+        }, async (progress) => {
+            const total = emails.length;
+            for (let i = 0; i < total; i++) {
+                progress.report({ message: `Processing ${i + 1}/${total}: ${emails[i]}` });
+                try {
+                    await axios.post(`${getServerUrl()}/admin/users`, { email: emails[i] }, {
+                        headers: { 'Authorization': `Bearer ${this._adminToken}` }
+                    });
+                    successCount++;
+                } catch (error: any) {
+                    console.error(`Failed to add user ${emails[i]}:`, error.response?.data?.error || error.message);
+                    failCount++;
+                }
+            }
+        });
+
+        if (failCount === 0) {
+            vscode.window.showInformationMessage(`Successfully added all ${successCount} user(s) to whitelist!`);
+        } else {
+            vscode.window.showWarningMessage(`Added ${successCount} user(s), but ${failCount} failed. Check console or if they already exist.`);
         }
+
+        this._handleFetchUsers();
     }
 
     private async _handleDeleteUser(email: string) {
@@ -97,30 +120,63 @@ export class AdminViewPanel {
                 headers: { 'Authorization': `Bearer ${this._adminToken}` }
             });
             vscode.window.showInformationMessage(`User ${email} removed.`);
-            this._handleFetchUsers(); // Refresh
+            this._handleFetchUsers();
         } catch (error: any) {
             vscode.window.showErrorMessage(`Delete User Failed: ${error.response?.data?.error || error.message}`);
         }
     }
 
-    private async _handleUploadProblem(filePath: string) {
-        try {
-            const fileStream = fs.createReadStream(filePath);
-            const formData = new (require('form-data'))();
-            formData.append('python_file', fileStream);
+    private async _handleSelectAndUploadProblems() {
+        // Native VS Code file picker
+        const uris = await vscode.window.showOpenDialog({
+            canSelectMany: true,
+            openLabel: 'Select Python Files to Upload',
+            filters: { 'Python': ['py'] }
+        });
 
-            vscode.window.showInformationMessage('AST Parsing and Uploading Problem...');
-
-            const res = await axios.post(`${getServerUrl()}/admin/problems`, formData, {
-                headers: {
-                    ...formData.getHeaders(),
-                    'Authorization': `Bearer ${this._adminToken}`
-                }
-            });
-            vscode.window.showInformationMessage(`✅ ${res.data.message}`);
-        } catch (error: any) {
-            vscode.window.showErrorMessage(`Upload Failed: ${error.response?.data?.error || error.message}`);
+        if (!uris || uris.length === 0) {
+            return;
         }
+
+        let successCount = 0;
+        let errMsg = '';
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Uploading Problems",
+            cancellable: false
+        }, async (progress) => {
+            const total = uris.length;
+            for (let i = 0; i < total; i++) {
+                const fsPath = uris[i].fsPath;
+                progress.report({ message: `Parsing and uploading ${i + 1}/${total}...` });
+
+                try {
+                    const fileStream = fs.createReadStream(fsPath);
+                    const formData = new (require('form-data'))();
+                    formData.append('python_file', fileStream);
+
+                    const res = await axios.post(`${getServerUrl()}/admin/problems`, formData, {
+                        headers: {
+                            ...formData.getHeaders(),
+                            'Authorization': `Bearer ${this._adminToken}`
+                        }
+                    });
+                    successCount++;
+                } catch (error: any) {
+                    const failReason = error.response?.data?.error || error.message;
+                    errMsg += `\n- ${uris[i].path.split('/').pop()}: ${failReason}`;
+                }
+            }
+        });
+
+        if (errMsg) {
+            vscode.window.showErrorMessage(`Uploaded ${successCount}/${uris.length} problems. Failures:${errMsg}`, { modal: true });
+        } else {
+            vscode.window.showInformationMessage(`🎉 Successfully parsed and uploaded all ${successCount} problem(s). Please refresh problems list.`);
+        }
+
+        // Refresh users/problems view if we implement a problem list in admin
     }
 
     public dispose() {
@@ -206,12 +262,11 @@ export class AdminViewPanel {
                         <p style="opacity: 0.8; font-size: 13px;"><strong>Rule:</strong> The file must contain a function <code>def f(...):</code> and rigorous <code>doctests</code>. We will automatically generate the scaffolds and hidden tests.</p>
                         
                         <div style="margin-top: 20px;">
-                            <label for="problemFile" style="font-weight: bold;">Select .py Source File:</label>
-                            <input type="file" id="problemFile" accept=".py" />
-                            <span class="help-text">Example: "01_Add_Two_Numbers.py"</span>
+                            <p style="opacity: 0.9; font-weight: bold;">Step 1: Click the button below.</p>
+                            <p style="opacity: 0.9;">Step 2: Select one or more <code>.py</code> files using the system dialog.</p>
                         </div>
                         
-                        <button class="primary" style="margin-top: 20px; width: 100%;" onclick="uploadProblem()">Execute Smart Parse & Upload</button>
+                        <button class="primary" style="margin-top: 20px; width: 100%;" onclick="uploadProblem()">🖥️ Select .py Files & Upload Bulk</button>
                     </div>
                 </div>
 
@@ -264,7 +319,7 @@ export class AdminViewPanel {
                         const emailInput = document.getElementById('newEmail');
                         const email = emailInput.value.trim();
                         if (email) {
-                            vscode.postMessage({ type: 'addUser', email });
+                            vscode.postMessage({ type: 'addUser', emailInput: email });
                             emailInput.value = '';
                         }
                     }
@@ -276,20 +331,8 @@ export class AdminViewPanel {
                     }
 
                     function uploadProblem() {
-                        const fileInput = document.getElementById('problemFile');
-                        if (fileInput.files.length > 0) {
-                            // Since Webview cannot send raw files easily over postMessage without base64 bloat,
-                            // we send the absolute path back to the extension host to read it directly.
-                            // However, file.path is available in electron browsers for absolute path!
-                            const file = fileInput.files[0];
-                            if (file.path) {
-                                vscode.postMessage({ type: 'uploadProblem', filePath: file.path });
-                            } else {
-                                alert("Failed to resolve file path.");
-                            }
-                        } else {
-                            alert('Please select a .py file first.');
-                        }
+                        // Directly ask extension host to open the file picker and handle it natively
+                        vscode.postMessage({ type: 'selectAndUploadProblems' });
                     }
                 </script>
             </body>

@@ -3,7 +3,7 @@
   "publisher": "ptlpoj",
   "displayName": "PtLPOJ Local Judge",
   "description": "Inner Team Python Online Judge Client",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/LynPtl/PtLPOJ.git"
