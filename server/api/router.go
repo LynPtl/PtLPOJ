@@ -14,8 +14,8 @@ func SetupRouter() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// 1. Initialize Middlewares
-	// General rate limiter for login endpoints: 1 request per second, burst of 3
-	loginLimiter := middleware.NewIPRateLimiter(rate.Limit(1), 3)
+	// General rate limiter for login endpoints: 1 request per second, burst of 3, max 10000 tracked IPs
+	loginLimiter := middleware.NewIPRateLimiter(rate.Limit(1), 3, 10000)
 
 	// 2. Public Endpoints (Auth)
 	// Apply rate limiting specifically to Auth endpoints to prevent OTP bombing

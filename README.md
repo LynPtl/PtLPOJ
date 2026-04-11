@@ -64,11 +64,12 @@ PtLPOJ/
 
 *   **Phase 10-12**: 身份鉴权与会话生命周期闭环、引入 GitHub CI 自动化发布工作流，支持动态扩展的自定义 Server URL 配置解耦。(v0.2.x)
 *   [x] **Phase 13-14**: 可视化管理后台 (Admin Control Panel)。突破单纯的 Webview 沙箱限制，接入操作系统级文件选取交互架构与正则分词并发执行库，支持白名单用户管理与海量 `.py` 源文件的秒级录入机制。(v0.3.x)
+*   [x] **Phase 15**: 队列架构重构与健康度优化。Go Channel 替代 SQL 轮询、Problem 缓存 mtime 自动 reload、Rate Limiter LRU、Graceful Shutdown、Worker Panic Recovery、TLE 判断改用 CPU 时间等改进。(v0.3.2)
 *   [ ] **Phase 16+**: 社交与排行榜体系探索...
 
 ## 🛠️ 技术栈速览
 
-*   **中间件层**: Go 1.21+, GORM, SQLite (WAL).
+*   **中间件层**: Go 1.25+, GORM, SQLite (WAL).
 *   **视图层 UI**: VS Code Extension API, TypeScript, WebView Native Bridge.
 *   **编译挂载体**: Python AST Compiler Engine, Docker API SDK v43+.
 

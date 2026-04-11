@@ -94,7 +94,9 @@ func RunCode(submissionID string, payload string, timeLimitMs int, memoryLimitKB
 
 	// 4. Start a stats collector goroutine using Streaming API
 	var maxMem int64
+	var cpuNano int64
 	var memMu sync.Mutex
+	var cpuMu sync.Mutex
 	statsCtx, statsCancel := context.WithCancel(ctx)
 	defer statsCancel()
 
@@ -103,13 +105,15 @@ func RunCode(submissionID string, payload string, timeLimitMs int, memoryLimitKB
 		if err != nil {
 			return
 		}
-		defer stats.Body.Close()
+		defer func() {
+			_ = stats.Body.Close()
+		}()
 
 		decoder := json.NewDecoder(stats.Body)
 		for {
 			var v types.StatsJSON
 			if err := decoder.Decode(&v); err != nil {
-				return // Stream closed or context cancelled
+				return
 			}
 			memMu.Lock()
 			if v.MemoryStats.Usage > uint64(maxMem) {
@@ -119,11 +123,18 @@ func RunCode(submissionID string, payload string, timeLimitMs int, memoryLimitKB
 				maxMem = int64(v.MemoryStats.MaxUsage)
 			}
 			memMu.Unlock()
+
+			cpuMu.Lock()
+			if v.CPUStats.CPUUsage.TotalUsage > uint64(cpuNano) {
+				cpuNano = int64(v.CPUStats.CPUUsage.TotalUsage)
+			}
+			cpuMu.Unlock()
 		}
 	}()
 
 	// 5. Wait for completion or Timeout
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(timeLimitMs+500)*time.Millisecond)
+	wallTimeout := time.Duration(timeLimitMs+2000) * time.Millisecond
+	timeoutCtx, cancel := context.WithTimeout(ctx, wallTimeout)
 	defer cancel()
 
 	statusCh, errCh := DockerClient.ContainerWait(timeoutCtx, containerID, container.WaitConditionNotRunning)
@@ -146,13 +157,16 @@ func RunCode(submissionID string, payload string, timeLimitMs int, memoryLimitKB
 		DockerClient.ContainerKill(ctx, containerID, "SIGKILL")
 	}
 
-	statsCancel() // Stop streaming
+	statsCancel()
 	execTime := int(time.Since(startTime).Milliseconds())
 
-	// Lock one last time to get the final peak
 	memMu.Lock()
 	peakKb := int(maxMem / 1024)
 	memMu.Unlock()
+
+	cpuMu.Lock()
+	cpuTimeMs := int(cpuNano / 1_000_000)
+	cpuMu.Unlock()
 
 	// 5. Inspect for constraints and OOM
 	inspect, err := DockerClient.ContainerInspect(ctx, containerID)
@@ -187,8 +201,9 @@ func RunCode(submissionID string, payload string, timeLimitMs int, memoryLimitKB
 	failedCase := 0
 
 	// If it timed out, force an exit code that signifies TLE
-	if timeoutTriggered || execTime >= timeLimitMs {
+	if timeoutTriggered || cpuTimeMs >= timeLimitMs {
 		exitCode = 124 // Standard timeout exit code equivalent
+		execTime = cpuTimeMs // Report actual CPU time consumed
 	} else if exitCode != 0 {
 		// Attempt to extract line failure
 		failedCase = extractFailedCaseNumberFromDoctest(cleanOut)

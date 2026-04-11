@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"pt_lpoj/middleware"
-	"pt_lpoj/models"
+	"pt_lpoj/scheduler"
 	"pt_lpoj/storage"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -49,13 +48,17 @@ func CreateSubmissionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if scheduler.GlobalQueue != nil {
+		scheduler.GlobalQueue.Enqueue(sub.ID)
+	}
+
 	res := SubmitResponse{
 		SubmissionID: sub.ID.String(),
 		Message:      "Submission queued",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted) // 202 Accepted
+	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(res)
 }
 
@@ -79,20 +82,15 @@ func GetUserSubmissionsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // SSEStreamHandler handles GET /api/submissions/{id}/stream
-// Pushes real-time SSE updates to the client
 func SSEStreamHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Basic route parsing
 	pathPrefix := "/api/submissions/"
 	pathSuffix := "/stream"
 
-	// e.g. /api/submissions/{id}/stream
-	// len("/api/submissions/") = 17, len("/stream") = 7
-	// length checking
 	if len(r.URL.Path) <= len(pathPrefix)+len(pathSuffix) {
 		http.Error(w, "Invalid submission ID pattern", http.StatusBadRequest)
 		return
@@ -107,7 +105,6 @@ func SSEStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID := r.Context().Value(middleware.UserContextKey).(uuid.UUID)
 
-	// Validate Ownership
 	sub, err := storage.GetSubmissionByID(subID)
 	if err != nil || sub == nil {
 		http.Error(w, "Submission not found", http.StatusNotFound)
@@ -127,46 +124,37 @@ func SSEStreamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	// Make sure we allow CORS for local dev if web app was ever used, but VSCode doesn't strictly need it unless browser
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// We poll the database for updates to push down.
-	// Normally we'd use Channels/Redis PubSub, but for SQLite WAL + minimal deployment
-	// polling is very clean and fully persistent across app restarts.
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
+	if scheduler.GlobalQueue == nil {
+		http.Error(w, "Judge system not initialized", http.StatusServiceUnavailable)
+		return
+	}
+	resultCh := scheduler.GlobalQueue.Subscribe(subID)
+	defer scheduler.GlobalQueue.Unsubscribe(subID)
 
-	// Timeout to prevent infinite lingering connection (e.g. 1 minute limit)
-	timeout := time.After(60 * time.Second)
+	timeout := r.Context()
 
 	for {
 		select {
-		case <-r.Context().Done():
-			// Client disconnected
-			return
-		case <-timeout:
-			// Safety cutoff
+		case <-timeout.Done():
 			fmt.Fprintf(w, "event: error\ndata: %s\n\n", "timeout waiting for result")
 			flusher.Flush()
 			return
-		case <-ticker.C:
-			currentSub, err := storage.GetSubmissionByID(subID)
-			if err != nil {
-				continue
-			}
-
-			// Encode and send Data
-			data, _ := json.Marshal(currentSub)
-			fmt.Fprintf(w, "data: %s\n\n", string(data))
-			flusher.Flush()
-
-			// Terminate stream if no longer pending/running
-			if currentSub.Status != models.StatusPending && currentSub.Status != models.StatusRunning {
-				// Send a closing event
-				fmt.Fprintf(w, "event: complete\ndata: {\"finished\": true}\n\n")
+		case result, ok := <-resultCh:
+			if !ok {
+				fmt.Fprintf(w, "event: error\ndata: %s\n\n", "subscription closed unexpectedly")
 				flusher.Flush()
 				return
 			}
+
+			data, _ := json.Marshal(result)
+			fmt.Fprintf(w, "data: %s\n\n", string(data))
+			flusher.Flush()
+
+			fmt.Fprintf(w, "event: complete\n\n")
+			flusher.Flush()
+			return
 		}
 	}
 }

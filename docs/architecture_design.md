@@ -87,7 +87,7 @@ graph TD
 ### 2.3 核心业务与调度层 (Judge Server)
 * **职责**：处理 RESTful 请求、维护高压判题队列、并协调底层执行器。
 * **技术选型**：`Golang` 的高并发模型。
-* **背压设计 (Backpressure)**：当学生短时间进行海量提交（如 100 份/秒），Server 不会立即开启 100 个沙盒压垮宿主机。提交记录落库为 `PENDING` 状态后，会压入带缓冲的 Go Channel。固定数量的 Judge Worker 协程循环消费队列，平滑削峰。
+* **背压设计 (Backpressure)**：当学生短时间进行海量提交（如 100 份/秒），Server 不会立即开启 100 个沙盒压垮宿主机。提交记录落库为 `PENDING` 状态后，会压入带缓冲的 Go Channel（缓冲大小 100）。固定数量的 Judge Worker 协程通过 fan-out 模式从 channel 拉取任务，平滑削峰。
 * **断电恢复 (Crash Recovery)**：系统在 Boot 引导阶段，会主动轮询 SQLite 中遗留的驻留状态为 `RUNNING` 甚至 `PENDING` 的孤儿判题，并重新推入消费队列。
 
 ### 2.4 沙盒引擎层 (Sandbox Engine)
@@ -97,7 +97,7 @@ graph TD
     * **NetworkDisabled: true**：拔除容器虚机网卡，斩断反向 Shell 和外发接口调用的可能。
     * **cgroups**：利用 Linux `cgroups` 严格划定容器内存上限 (如 256MB) 并在触发时由内核直接 `SIGKILL` (得到 OLE 评判)；设定 CPU 绝对运行周期限定 (Quota)。
     * **CapDrop ["ALL"] & User Namespace**：卸载一切 root 特权，以最低权限用户启动。
-    * **Wall-Time 熔断**：在发起 `Docker Wait` 等待进程退出时，注入 Go `Context.WithTimeout`。一旦超过 5 秒物理时间（防死循环 `while True` 或休眠 `time.sleep`），直接调用 Docker Remove 强杀容器。
+    * **CPU-Time 熔断**：TLE 判断基于容器实际消耗的 CPU 时间（`CPUStats.CPUUsage.TotalUsage`），而非墙钟时间（wall-clock time），避免容器调度延迟导致正常代码被判超时。物理超时仍由 `Context.WithTimeout` 控制（`timeLimitMs + 2000ms`），用于防止死循环或休眠。
     * **I/O 截断**：对于程序的 `stdout` 和 `stderr` 流捕获，使用 `io.LimitReader` 包裹，防止学生恶意打桩输出数百兆垃圾数据撑爆服务端内存空间。
 
 ### 2.5 数据存储层 (Data Layer)
@@ -124,3 +124,13 @@ graph TD
    为了保证开发“沉浸流”。在 Web 浏览器上写算法题总是面临没有智能提示（IntelliSense）、无法引入第三方包在本地做验证的问题。在 VS Code 侧完成闭环是下一代开发者工具的标准。
 3. **为什么使用 SSE 代替 WebSocket？**
    对于判题结果推流，需求是 **单向的服务器至客户端通知**（仅仅告诉客户端判题的阶段性进度）。`Server-Sent Events (SSE)` 架构比 WebSocket 更轻量、占用连接资源更少，天生支持断线重连标准，特别切合该场景。
+
+## 4. 容器化探索记录
+
+本项目曾探索通过 `docker-compose` 实现一键部署，主要目标是安全地隔离沙箱执行（避免 `/var/run/docker.sock` 挂载带来的容器逃逸和权限提升风险）。遇到的核心困难如下：
+
+**沙箱与 docker.sock 的根本矛盾**：沙箱执行需要创建新的 Docker 容器，创建容器必须通过 Docker daemon（通过 unix socket `/var/run/docker.sock` 或 TCP 接口）。挂载 docker.sock 到任何容器都意味着该容器内的进程等价于拥有宿主机 root 权限——一旦被攻破（如代码注入、远程代码执行），攻击者可以直接在宿主机上创建特权容器、挂载目录或执行任意命令，完全控制宿主机。业界对此没有完美的"无需 docker.sock 就能创建容器"的解决方案。
+
+**Sysbox 安全方案**：理论上，Sysbox 运行时可以创建隔离的 mini-VM 环境，结合 User Namespace remapping（容器内 root 映射到宿主机普通用户）和合理的 Resource Quota，能够大幅降低 docker.sock 挂载的风险——即使容器被攻破，逃逸也受限于 Sysbox 创建的隔离层。但在 WSL2 + Docker Desktop 环境下，Docker Desktop 的 dockerd 运行在独立的 Linux VM 中，不受宿主机的 `/etc/docker/daemon.json` 控制，因此无法配置 sysbox 运行时。对于原生 Linux + Docker 环境，Sysbox 方案是可行的，只需在宿主机安装 sysbox 并在 `docker-compose.yml` 中指定 `runtime: sysbox-runc` 即可。
+
+**结论**：在当前 WSL2 开发环境约束下，最务实的选择是保持宿主机裸机部署架构——Go 服务直接运行在宿主机上，通过 docker socket 创建沙箱容器。教学场景下（非对抗性环境），现有的安全限制（User Namespace、CapDrop、cgroups、NetworkDisabled 等）已提供足够的隔离保护。容器化部署作为未来规模化部署的优化方向，需在原生 Linux 环境中配合 sysbox 才能安全落地。

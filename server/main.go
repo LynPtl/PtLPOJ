@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"pt_lpoj/api"
 	"pt_lpoj/models"
@@ -40,8 +44,9 @@ func main() {
 	}
 
 	// 5. Start Worker Pool (Scheduler)
-	// For dev, 2 workers is plenty
-	scheduler.StartWorkerPool(2)
+	jobQueue := scheduler.NewJobQueue(100)
+	scheduler.SetGlobalQueue(jobQueue)
+	scheduler.StartWorkerPool(2, jobQueue)
 
 	// 6. Mount Router & Start Server
 	router := api.SetupRouter()
@@ -51,11 +56,36 @@ func main() {
 		port = "8080"
 	}
 	addr := ":" + port
-	log.Printf("Server starting on http://localhost%s", addr)
 
-	if err := http.ListenAndServe(addr, router); err != nil {
-		log.Fatalf("Server crashed: %v", err)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: router,
 	}
+
+	go func() {
+		log.Printf("Server starting on http://localhost%s", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server crashed: %v", err)
+		}
+	}()
+
+	// 7. Graceful Shutdown on SIGINT / SIGTERM
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+
+	log.Println("Shutdown signal received, draining...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
+	}
+
+	jobQueue.Close()
+
+	log.Println("Server shutdown complete")
 }
 
 // seedInitAdmin injects the admin email from PTLPOJ_INIT_ADMIN_EMAIL into the whitelist if set
@@ -68,7 +98,7 @@ func seedInitAdmin() error {
 
 	user, err := storage.GetUserByEmail(adminEmail)
 	if err == nil && user != nil {
-		return nil // Already seeded
+		return nil
 	}
 	_, err = storage.CreateUser(adminEmail, models.RoleAdmin)
 	if err != nil {

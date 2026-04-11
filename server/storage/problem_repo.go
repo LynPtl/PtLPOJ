@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 
 	"pt_lpoj/models"
 )
@@ -17,27 +19,53 @@ var (
 	ProblemCache map[int]models.Problem
 	// DataDirPath holds the absolute path to the data directory
 	DataDirPath string
+	// problemsJSONPath holds the path to problems.json for reload detection
+	problemsJSONPath string
+	// problemsJSONMtime stores the last known mtime of problems.json
+	problemsJSONMtime int64
 
-	cacheMutex sync.RWMutex
+	cacheMutex   sync.RWMutex
+	reloadStopCh chan struct{}
 )
 
-// InitProblemRepo reads the problems.json into memory
+// InitProblemRepo reads the problems.json into memory and starts a background reload watcher.
 func InitProblemRepo(dataDir string) error {
 	DataDirPath = dataDir
-	cacheMutex.Lock()
-	defer cacheMutex.Unlock()
+	problemsJSONPath = filepath.Join(dataDir, "problems", "problems.json")
 
+	if reloadStopCh != nil {
+		close(reloadStopCh)
+	}
+
+	if err := loadProblemsFromFile(); err != nil {
+		return err
+	}
+
+	reloadStopCh = make(chan struct{})
+	go watchProblemsFile(reloadStopCh)
+
+	return nil
+}
+
+// loadProblemsFromFile reads and parses the problems.json file into the cache.
+// Caller must hold cacheMutex.
+func loadProblemsFromFile() error {
 	ProblemCache = make(map[int]models.Problem)
-	jsonPath := filepath.Join(dataDir, "problems", "problems.json")
 
-	file, err := os.Open(jsonPath)
+	file, err := os.Open(problemsJSONPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("problems.json not found at %s. Please generate it first", jsonPath)
+			return fmt.Errorf("problems.json not found at %s. Please generate it first", problemsJSONPath)
 		}
 		return err
 	}
 	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	problemsJSONMtime = info.ModTime().UnixNano()
 
 	bytes, err := io.ReadAll(file)
 	if err != nil {
@@ -53,7 +81,42 @@ func InitProblemRepo(dataDir string) error {
 		ProblemCache[p.ID] = p
 	}
 
+	log.Printf("[ProblemRepo] Loaded %d problems from disk", len(problemsList))
 	return nil
+}
+
+// watchProblemsFile periodically checks problems.json for changes and reloads the cache.
+func watchProblemsFile(stopCh chan struct{}) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-ticker.C:
+			checkAndReload()
+		}
+	}
+}
+
+// checkAndReload checks if problems.json has changed and reloads if so.
+func checkAndReload() {
+	info, err := os.Stat(problemsJSONPath)
+	if err != nil {
+		return
+	}
+
+	if info.ModTime().UnixNano() != problemsJSONMtime {
+		cacheMutex.Lock()
+		err := loadProblemsFromFile()
+		cacheMutex.Unlock()
+		if err != nil {
+			log.Printf("[ProblemRepo] Failed to reload problems.json: %v", err)
+		} else {
+			log.Println("[ProblemRepo] problems.json changed, cache reloaded")
+		}
+	}
 }
 
 // GetProblemByID safely retrieves a problem definition from memory
@@ -69,9 +132,7 @@ func GetProblemByID(id int) (*models.Problem, error) {
 }
 
 // GetProblemFile retrieves a specific file content (scaffold.py, problem.md, tests.txt)
-// for a particular problem from the file system.
 func GetProblemFile(id int, filename string) (string, error) {
-	// Security: prevent directory traversal
 	cleanFilename := filepath.Base(filename)
 
 	filePath := filepath.Join(DataDirPath, "problems", fmt.Sprintf("%d", id), cleanFilename)
@@ -87,7 +148,7 @@ func GetProblemFile(id int, filename string) (string, error) {
 	return string(bytes), nil
 }
 
-// GetAllProblems safely retrieves all problems (usually for returning the list)
+// GetAllProblems safely retrieves all problems
 func GetAllProblems() []models.Problem {
 	cacheMutex.RLock()
 	defer cacheMutex.RUnlock()
@@ -97,7 +158,6 @@ func GetAllProblems() []models.Problem {
 		list = append(list, p)
 	}
 
-	// Sort by ID to ensure stable order
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].ID < list[j].ID
 	})
@@ -120,7 +180,6 @@ func GetNextProblemID() int {
 }
 
 // SaveNewProblem dynamically saves a parsed python file into the system.
-// It creates the necessary dir, writes tests.txt, scaffold.py, problem.md, and updates problems.json.
 func SaveNewProblem(id int, title, scaffold, fullDocstring string, intCaseCount int, funcName string) error {
 	cacheMutex.Lock()
 	defer cacheMutex.Unlock()
@@ -154,7 +213,6 @@ func SaveNewProblem(id int, title, scaffold, fullDocstring string, intCaseCount 
 
 	ProblemCache[id] = newProb
 
-	// Rewrite problems.json
 	var list []models.Problem
 	for _, p := range ProblemCache {
 		list = append(list, p)

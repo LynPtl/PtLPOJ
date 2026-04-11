@@ -24,25 +24,34 @@ type ProblemDetailResponse struct {
 	Scaffold string `json:"scaffold"`
 }
 
+// getBestUserStatus returns the best submission status for a user on a specific problem.
+// It uses a single optimized query instead of loading all submissions.
 func getBestUserStatus(userID uuid.UUID, problemID int) string {
-	// Find all submissions for this user and problem
-	var subs []models.Submission
-	storage.DB.Where("user_id = ? AND problem_id = ?", userID, problemID).Find(&subs)
-
-	if len(subs) == 0 {
-		return "UNATTEMPTED"
+	var acCount int64
+	storage.DB.Model(&models.Submission{}).
+		Where("user_id = ? AND problem_id = ? AND status = ?", userID, problemID, models.StatusAC).
+		Count(&acCount)
+	if acCount > 0 {
+		return "AC"
 	}
 
-	bestStatus := "WA" // Default to WA if attempted
-	for _, s := range subs {
-		if s.Status == models.StatusAC {
-			return "AC" // AC overrides everything
-		}
-		if s.Status == models.StatusPending || s.Status == models.StatusRunning {
-			bestStatus = string(s.Status)
-		}
+	var pendingCount int64
+	storage.DB.Model(&models.Submission{}).
+		Where("user_id = ? AND problem_id = ? AND (status = ? OR status = ?)", userID, problemID, models.StatusPending, models.StatusRunning).
+		Count(&pendingCount)
+	if pendingCount > 0 {
+		return "PENDING"
 	}
-	return bestStatus
+
+	var attemptCount int64
+	storage.DB.Model(&models.Submission{}).
+		Where("user_id = ? AND problem_id = ?", userID, problemID).
+		Count(&attemptCount)
+	if attemptCount > 0 {
+		return "WA"
+	}
+
+	return "UNATTEMPTED"
 }
 
 // GetProblemsHandler handles GET /api/problems
