@@ -8,25 +8,32 @@ import (
 // BuildExecutableCode combines the user's submitted pure Python code with the
 // server's hidden doctest cases into a single executable payload payload.
 // We use doctest in verbose mode, and if any test fails, we force a non-zero exit code (1).
+//
+// Security: user's print() calls are silenced during the user code phase,
+// so they cannot pollute the doctest output that Go parses.
 func BuildExecutableCode(userCode string, hiddenTests string) string {
-	// The injection template wraps the user logic, injects the hidden tests into
-	// the docstring of function 'f', and then rigorously runs the test suite.
-
-	// We handle the tricky issue of injecting the docs: since the user's code might
-	// redefine 'f' entirely, we inject the __doc__ dynamically *after* their code runs.
-
 	template := `
 import doctest
 import sys
 import traceback
+import builtins
+
+# Silence user's print() calls by replacing the builtin
+# They will be restored after the user code phase so doctest output is unaffected
+_original_print = builtins.print
+def _silenced_print(*args, **kwargs):
+    pass  # discard all print output
+builtins.print = _silenced_print
 
 # === [ User Submitted Code START ] ===
 %s
 # === [ User Submitted Code END ] ===
 
+# Restore print before running doctest so doctest's output goes to stdout
+builtins.print = _original_print
+
 # === [ Hidden Sandbox Injection START ] ===
 try:
-    # Attempt to attach the hidden tests safely.
     if 'f' in globals():
         f.__doc__ = """
 %s
@@ -39,18 +46,14 @@ try:
     # verbose=True emits clear text traces we can grep using Go
     results = doctest.testmod(verbose=True)
     if results.failed > 0:
-        # One or more tests failed. Force exit 1 (WA)
         sys.exit(1)
     else:
-        # All passed
         sys.exit(0)
 except Exception as e:
-    # Explicitly catch syntax/runtime errors during the user load phase
     traceback.print_exc()
     sys.exit(2)
 `
-	// Sanitize tests string slightly so it doesn't break the triple quotes
-	safeTests := strings.ReplaceAll(hiddenTests, "\"\"\"", "\\\"\\\"\\\"")
+	safeTests := strings.ReplaceAll(hiddenTests, "\"\"\"", "\\\"")
 
 	return fmt.Sprintf(template, userCode, safeTests)
 }

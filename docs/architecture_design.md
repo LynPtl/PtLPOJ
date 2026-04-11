@@ -99,6 +99,7 @@ graph TD
     * **CapDrop ["ALL"] & User Namespace**：卸载一切 root 特权，以最低权限用户启动。
     * **CPU-Time 熔断**：TLE 判断基于容器实际消耗的 CPU 时间（`CPUStats.CPUUsage.TotalUsage`），而非墙钟时间（wall-clock time），避免容器调度延迟导致正常代码被判超时。物理超时仍由 `Context.WithTimeout` 控制（`timeLimitMs + 2000ms`），用于防止死循环或休眠。
     * **I/O 截断**：对于程序的 `stdout` 和 `stderr` 流捕获，使用 `io.LimitReader` 包裹，防止学生恶意打桩输出数百兆垃圾数据撑爆服务端内存空间。
+    * **print() 静默**：在评测执行阶段替换 `builtins.print` 为静默函数，防止用户代码的输出污染 doctest 的比较输出。
 
 ### 2.5 数据存储层 (Data Layer)
 * **关系数据**：采用 `SQLite` 单体数据库。利用 `GORM` 框架管理 `Users`, `Submissions`, `Problems` 等结构化状态。
